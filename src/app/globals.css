@@ -133,3 +133,147 @@
     @apply font-mono text-[10px] font-bold uppercase tracking-[0.04em];
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Tiptap document body
+   Scoped to .tiptap so the editor's own typography does not leak into the app
+   chrome around it.
+   --------------------------------------------------------------------------- */
+.tiptap {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.tiptap > * + * {
+  margin-top: 0.75em;
+}
+
+.tiptap h1 {
+  font-size: 1.85em;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-top: 1.2em;
+}
+
+.tiptap h2 {
+  font-size: 1.4em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin-top: 1.1em;
+}
+
+.tiptap h3 {
+  font-size: 1.15em;
+  font-weight: 700;
+  margin-top: 1em;
+}
+
+.tiptap ul,
+.tiptap ol {
+  padding-left: 1.4em;
+}
+
+.tiptap ul {
+  list-style: disc;
+}
+
+.tiptap ol {
+  list-style: decimal;
+}
+
+.tiptap ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+
+.tiptap ul[data-type='taskList'] input[type='checkbox'] {
+  margin-top: 0.35em;
+  accent-color: var(--pink);
+}
+
+.tiptap blockquote {
+  border-left: 3px solid var(--pink);
+  padding-left: 1em;
+  color: var(--muted-2);
+}
+
+.tiptap pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85em 1em;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+}
+
+.tiptap code {
+  background: var(--surface-3);
+  border-radius: 5px;
+  padding: 0.12em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+}
+
+.tiptap pre code {
+  background: none;
+  padding: 0;
+}
+
+.tiptap hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.6em 0;
+}
+
+.tiptap a {
+  color: var(--pink);
+  text-decoration: underline;
+}
+
+.tiptap img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.tiptap mark {
+  background: var(--surface-3);
+  border-radius: 3px;
+  padding: 0 0.15em;
+}
+
+/* Tables need to scroll on a phone rather than blow out the layout. */
+.tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.7em;
+  min-width: 6em;
+  text-align: left;
+}
+
+.tiptap th {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
