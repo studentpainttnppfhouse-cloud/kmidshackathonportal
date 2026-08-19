@@ -10,10 +10,16 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dev:api": "node scripts/dev-api.mjs",
+    "dev:local": "node scripts/dev-local.mjs",
+    "db:setup": "node scripts/setup.mjs",
+    "smoke": "node scripts/smoke/flows.mjs",
+    "smoke:screens": "node scripts/smoke/screens.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
+    "@tiptap/extension-color": "^2.6.6",
     "@tiptap/extension-highlight": "^2.6.6",
     "@tiptap/extension-image": "^2.6.6",
     "@tiptap/extension-link": "^2.6.6",
@@ -24,7 +30,6 @@
     "@tiptap/extension-task-item": "^2.6.6",
     "@tiptap/extension-task-list": "^2.6.6",
     "@tiptap/extension-text-style": "^2.6.6",
-    "@tiptap/extension-color": "^2.6.6",
     "@tiptap/extension-underline": "^2.6.6",
     "@tiptap/pm": "^2.6.6",
     "@tiptap/react": "^2.6.6",
@@ -43,9 +48,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
+    "pg": "^8.23.0",
+    "playwright": "^1.62.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",

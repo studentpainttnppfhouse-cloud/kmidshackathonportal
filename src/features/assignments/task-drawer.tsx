@@ -5,7 +5,8 @@ import { X, Send, Trash2, Check } from 'lucide-react';
 import { Avatar } from '@/components/avatar';
 import { ASSIGNMENT_STATUS_META, ASSIGNMENT_STATUSES } from '@/lib/types';
 import { isOverdue, type AssignmentRow } from '@/lib/rows';
-import { formatDue, relativeTime } from '@/lib/format';
+import { formatDue } from '@/lib/format';
+import { TimeAgo } from '@/components/time-ago';
 import { addCommentAction, deleteAssignmentAction, setAssignmentStatusAction } from './actions';
 
 export interface DrawerComment {
@@ -163,7 +164,7 @@ export function TaskDrawer({
                       {c.body}
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted">
-                      {c.author} · {relativeTime(c.created_at)}
+                      {c.author} · <TimeAgo iso={c.created_at} />
                     </div>
                   </div>
                 </li>

@@ -1,6 +1,8 @@
 /** Date and label formatting shared across screens. */
+import { asIsoDate } from './rows';
 
-export function formatDue(due: string | null, overdue = false): string {
+export function formatDue(raw: string | null, overdue = false): string {
+  const due = asIsoDate(raw);
   if (!due) return 'No due date';
 
   const date = new Date(`${due}T00:00:00`);

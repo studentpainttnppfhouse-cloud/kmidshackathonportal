@@ -49,7 +49,9 @@ export default async function DashboardPage() {
   const caption =
     overdueAll.length === 0
       ? "You're on track. Keep the momentum going."
-      : `${overdueAll.length} item${overdueAll.length === 1 ? '' : 's'} need attention.`;
+      : overdueAll.length === 1
+        ? '1 item needs attention.'
+        : `${overdueAll.length} items need attention.`;
 
   return (
     <div className="mx-auto flex max-w-[1180px] animate-fadeup flex-col gap-5">
@@ -215,16 +217,58 @@ async function recentActivity(realTier: string): Promise<ActivityEntry[]> {
   };
 
   return (data ?? []).map((row) => {
-    const [domain = 'app', verb = 'changed'] = row.action.split('.');
+    const [domain = 'app'] = row.action.split('.');
     return {
       id: row.id,
       actor: realTier === 'T4' ? (row.actor_email?.split('@')[0] ?? 'Someone') : 'Someone',
-      action: verb.replace(/_/g, ' '),
-      target: row.target_label ?? domain,
+      action: describeAction(row.action),
+      target: row.target_label ?? '',
       when: relativeTime(row.created_at),
       color: palette[domain] ?? '#94A3B8',
     };
   });
+}
+
+/**
+ * Turn an audit action key into something that reads as a sentence.
+ * Falls back to the verb with underscores stripped, so a newly added action
+ * still renders sensibly before anyone gets round to naming it here.
+ */
+function describeAction(action: string): string {
+  const phrases: Record<string, string> = {
+    'auth.signin': 'signed in',
+    'auth.signout': 'signed out',
+    'auth.account_created': 'joined as',
+    'auth.access_requested': 'requested access',
+    'user.tier_changed': 'changed the tier of',
+    'user.department_changed': 'moved departments for',
+    'user.suspended': 'suspended',
+    'user.banned': 'banned',
+    'user.reinstated': 'reinstated',
+    'user.approved': 'approved',
+    'assignment.created': 'created',
+    'assignment.approved': 'approved',
+    'assignment.status_changed': 'moved',
+    'assignment.deleted': 'deleted',
+    'document.created': 'created',
+    'document.edited': 'edited',
+    'document.deleted': 'deleted',
+    'document.restored': 'restored',
+    'document.exported': 'exported',
+    'spreadsheet.created': 'created',
+    'file.uploaded': 'uploaded',
+    'form.published': 'published',
+    'form.response_submitted': 'got a response to',
+    'announcement.published': 'announced',
+    'incident.filed': 'filed an incident',
+    'export.run': 'ran a full export',
+    'invite.sent': 'invited',
+  };
+
+  const known = phrases[action];
+  if (known) return known;
+  const [, verb = 'updated'] = action.split('.');
+  return verb.replace(/_/g, ' ');
 }
 
 async function activeStaffCount(): Promise<number> {

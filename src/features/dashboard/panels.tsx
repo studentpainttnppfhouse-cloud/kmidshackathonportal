@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { Plus, Upload, Megaphone, FileText } from 'lucide-react';
 import { Avatar } from '@/components/avatar';
-import { relativeTime } from '@/lib/format';
+
 import type { AnnouncementRow, DeptProgress } from '@/lib/rows';
+import { TimeAgo } from '@/components/time-ago';
 
 export function QuickActions() {
   const actions = [
@@ -47,7 +48,7 @@ export function AnnouncementsPanel({ items }: { items: AnnouncementRow[] }) {
                   {a.pinned ? ' · pinned' : ''}
                 </span>
                 <span className="shrink-0 text-[11px] text-muted">
-                  {relativeTime(a.created_at)}
+                  <TimeAgo iso={a.created_at} />
                 </span>
               </div>
               <div className="text-[13px] font-semibold">{a.title}</div>
@@ -121,8 +122,8 @@ export function LiveActivity({ items }: { items: ActivityEntry[] }) {
                 style={{ background: a.color }}
               />
               <div className="min-w-0 text-[12.5px] leading-[1.45]">
-                <b>{a.actor}</b> {a.action}{' '}
-                <b className="text-deep">{a.target}</b>
+                <b>{a.actor}</b> {a.action}
+                {a.target ? <> <b className="text-deep">{a.target}</b></> : null}
                 <div className="mono-tag text-muted">{a.when}</div>
               </div>
             </li>

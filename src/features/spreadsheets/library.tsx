@@ -4,8 +4,9 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Grid3x3, Plus, Search } from 'lucide-react';
-import { relativeTime } from '@/lib/format';
+
 import type { Department } from '@/lib/types';
+import { TimeAgo } from '@/components/time-ago';
 import { createSheetAction } from './actions';
 
 export interface LibrarySheet {
@@ -87,7 +88,7 @@ export function SheetLibrary({
               <div className="truncate text-[14px] font-semibold">{s.title}</div>
               <div className="mt-1 text-[12px] text-muted-2">
                 {s.department_id ? deptNames[s.department_id] ?? 'General' : 'General'} ·{' '}
-                {relativeTime(s.updated_at)}
+                <TimeAgo iso={s.updated_at} />
               </div>
               {s.source_form_id ? (
                 <span className="mono-tag mt-2 inline-block rounded-[5px] bg-surface-3 px-1.5 py-0.5 text-deep">

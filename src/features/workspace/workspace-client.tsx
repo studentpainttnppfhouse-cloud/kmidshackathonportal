@@ -8,8 +8,9 @@ import { TierBadge } from '@/components/tier-badge';
 import { EcgDivider } from '@/components/ecg';
 import { ASSIGNMENT_STATUS_META, type Department } from '@/lib/types';
 import type { AnnouncementRow, AssignmentRow, DirectoryUser } from '@/lib/rows';
-import { formatDate, formatDue, relativeTime } from '@/lib/format';
+import { formatDate, formatDue } from '@/lib/format';
 import { isOverdue } from '@/lib/rows';
+import { TimeAgo } from '@/components/time-ago';
 import { publishAnnouncementAction } from './announcement-actions';
 
 type Tab = 'assignments' | 'documents' | 'files' | 'announcements' | 'members';
@@ -187,7 +188,7 @@ function DocumentsTab({ items }: { items: WorkspaceDoc[] }) {
           <FileText size={18} className="mb-2 text-pink" />
           <div className="truncate text-[14px] font-semibold">{d.title}</div>
           <div className="mt-1 text-[12px] text-muted-2">
-            {d.owner ?? 'Unknown'} · {relativeTime(d.updated_at)}
+            {d.owner ?? 'Unknown'} · <TimeAgo iso={d.updated_at} />
           </div>
           <span className="mono-tag mt-2 inline-block rounded-[5px] bg-surface-2 px-1.5 py-0.5 text-muted-2">
             {d.status.replace('_', ' ')}
@@ -297,7 +298,7 @@ function AnnouncementsTab({
                 {a.pinned ? <Pin size={13} className="text-pink" /> : null}
                 <span className="text-[14px] font-bold">{a.title}</span>
                 <span className="ml-auto shrink-0 text-[11.5px] text-muted">
-                  {relativeTime(a.created_at)}
+                  <TimeAgo iso={a.created_at} />
                 </span>
               </div>
               <p className="whitespace-pre-wrap text-[13px] text-muted-2">{a.body}</p>

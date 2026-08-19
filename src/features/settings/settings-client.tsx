@@ -5,8 +5,9 @@ import { LogOut, Monitor, ShieldCheck, Trash2 } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { TierBadge } from '@/components/tier-badge';
 import { SHIRT_SIZES, type SessionUser } from '@/lib/types';
-import { formatDateTime, relativeTime } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 import { signOutAction } from '@/app/signin/actions';
+import { TimeAgo } from '@/components/time-ago';
 import { revokeDeviceAction, signOutEverywhereAction, updateProfileAction } from './actions';
 
 export interface DeviceRow {
@@ -153,7 +154,7 @@ export function SettingsClient({
                   ) : null}
                 </div>
                 <div className="text-[11.5px] text-muted-2">
-                  Last used {relativeTime(d.last_seen_at)} · added {formatDateTime(d.created_at)}
+                  Last used <TimeAgo iso={d.last_seen_at} /> · added {formatDateTime(d.created_at)}
                 </div>
               </div>
               {!d.isCurrent ? (

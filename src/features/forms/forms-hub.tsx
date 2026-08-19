@@ -4,8 +4,9 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, Plus } from 'lucide-react';
-import { relativeTime } from '@/lib/format';
+
 import type { Department } from '@/lib/types';
+import { TimeAgo } from '@/components/time-ago';
 import { createFormAction } from './actions';
 
 export interface HubForm {
@@ -93,7 +94,7 @@ export function FormsHub({
                 <div className="truncate text-[14px] font-semibold">{f.title}</div>
                 <div className="mt-1 text-[12px] text-muted-2">
                   {f.department_id ? deptNames[f.department_id] ?? 'General' : 'General'} ·{' '}
-                  {relativeTime(f.updated_at)}
+                  <TimeAgo iso={f.updated_at} />
                 </div>
                 <div className="mt-2 text-[12.5px] font-semibold text-deep">
                   {f.responseCount} {f.responseCount === 1 ? 'response' : 'responses'}

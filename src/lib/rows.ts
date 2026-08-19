@@ -64,10 +64,25 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Normalise a date value to a bare `YYYY-MM-DD`.
+ *
+ * A `date` column comes back as "2027-03-20" from PostgREST, but anything that
+ * round-trips through a JS Date arrives as a full ISO timestamp. Both appear in
+ * practice, and the string comparisons below are only correct for the first
+ * form — so everything goes through here rather than trusting the shape.
+ */
+export function asIsoDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
 export function isOverdue(a: Pick<AssignmentRow, 'due_date' | 'status'>): boolean {
-  if (!a.due_date) return false;
+  const due = asIsoDate(a.due_date);
+  if (!due) return false;
   if (a.status === 'done' || a.status === 'approved') return false;
-  return a.due_date < todayIso();
+  return due < todayIso();
 }
 
 export function summariseByDepartment(
@@ -79,13 +94,12 @@ export function summariseByDepartment(
   return departments.map((d) => {
     const mine = assignments.filter((a) => a.department_id === d.id);
     const done = mine.filter((a) => a.status === 'done' || a.status === 'approved').length;
-    const overdue = mine.filter(
-      (a) =>
-        a.due_date !== null &&
-        a.due_date < today &&
-        a.status !== 'done' &&
-        a.status !== 'approved',
-    ).length;
+    const overdue = mine.filter((a) => {
+      const due = asIsoDate(a.due_date);
+      return (
+        due !== null && due < today && a.status !== 'done' && a.status !== 'approved'
+      );
+    }).length;
     const total = mine.length;
     return {
       ...d,

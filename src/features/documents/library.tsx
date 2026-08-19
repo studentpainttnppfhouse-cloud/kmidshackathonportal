@@ -4,8 +4,9 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FileText, Plus, Search } from 'lucide-react';
-import { relativeTime } from '@/lib/format';
+
 import type { Department, DocStatus } from '@/lib/types';
+import { TimeAgo } from '@/components/time-ago';
 import { createDocumentAction } from './actions';
 
 export interface LibraryDoc {
@@ -126,7 +127,7 @@ export function DocumentLibrary({
                 <div className="truncate text-[14px] font-semibold">{d.title}</div>
                 <div className="mt-1 text-[12px] text-muted-2">
                   {d.department_id ? deptNames[d.department_id] ?? 'General' : 'General'} ·{' '}
-                  {relativeTime(d.updated_at)}
+                  <TimeAgo iso={d.updated_at} />
                 </div>
                 {d.tags.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-1">
