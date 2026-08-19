@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Plus, Upload, Megaphone, FileText } from 'lucide-react';
 import { Avatar } from '@/components/avatar';
 import { relativeTime } from '@/lib/format';
-import type { AnnouncementRow, DeptProgress } from '@/lib/db';
+import type { AnnouncementRow, DeptProgress } from '@/lib/rows';
 
 export function QuickActions() {
   const actions = [

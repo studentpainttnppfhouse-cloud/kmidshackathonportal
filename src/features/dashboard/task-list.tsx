@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ASSIGNMENT_STATUS_META } from '@/lib/types';
-import { isOverdue, type AssignmentRow } from '@/lib/db';
+import { isOverdue, type AssignmentRow } from '@/lib/rows';
 import { formatDue } from '@/lib/format';
 
 export function TaskList({

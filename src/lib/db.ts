@@ -1,8 +1,15 @@
 import 'server-only';
 import { userClient } from '@/lib/supabase/user';
+import type { AssignmentStatus, Department, Priority, SessionUser } from '@/lib/types';
 import type {
-  AssignmentStatus, Department, Priority, SessionUser, Tier,
-} from '@/lib/types';
+  AnnouncementRow, AssignmentRow, DirectoryUser,
+} from '@/lib/rows';
+
+// Re-exported so server components can keep importing everything from one place.
+export type {
+  AnnouncementRow, AssignmentRow, DeptProgress, DirectoryUser,
+} from '@/lib/rows';
+export { daysToEvent, isOverdue, summariseByDepartment, todayIso } from '@/lib/rows';
 
 /**
  * Shared reads.
@@ -12,32 +19,6 @@ import type {
  * tier in JavaScript" step, because that would be a second source of truth
  * that could drift from the policies.
  */
-
-export interface AssignmentRow {
-  id: string;
-  title: string;
-  description: string | null;
-  department_id: string | null;
-  due_date: string | null;
-  priority: Priority;
-  status: AssignmentStatus;
-  created_by: string | null;
-  approved_by: string | null;
-  document_id: string | null;
-  created_at: string;
-  assignees: { user_id: string; nickname: string | null; name: string | null }[];
-}
-
-export interface AnnouncementRow {
-  id: string;
-  title: string;
-  body: string;
-  scope: 'all' | 'department';
-  department_id: string | null;
-  pinned: boolean;
-  created_at: string;
-  author: { nickname: string | null; name: string | null } | null;
-}
 
 export async function getDepartments(user: SessionUser): Promise<Department[]> {
   const db = await userClient(user.id);
@@ -146,22 +127,6 @@ export async function getAnnouncements(
   }));
 }
 
-export interface DirectoryUser {
-  id: string;
-  email: string;
-  name: string | null;
-  nickname: string | null;
-  grade: string | null;
-  role_title: string | null;
-  department_id: string | null;
-  tier: Tier;
-  status: string;
-  is_reserve: boolean;
-  is_mentor: boolean;
-  is_alumni: boolean;
-  avatar_url: string | null;
-}
-
 export async function getDirectory(user: SessionUser): Promise<DirectoryUser[]> {
   const db = await userClient(user.id);
   const { data } = await db
@@ -175,46 +140,3 @@ export async function getDirectory(user: SessionUser): Promise<DirectoryUser[]> 
   return (data ?? []) as DirectoryUser[];
 }
 
-/** Progress per department, used by the Head and Admin dashboards. */
-export interface DeptProgress extends Department {
-  done: number;
-  total: number;
-  pct: number;
-  overdue: number;
-}
-
-export function summariseByDepartment(
-  departments: Department[],
-  assignments: AssignmentRow[],
-): DeptProgress[] {
-  const today = new Date().toISOString().slice(0, 10);
-
-  return departments.map((d) => {
-    const mine = assignments.filter((a) => a.department_id === d.id);
-    const done = mine.filter((a) => a.status === 'done' || a.status === 'approved').length;
-    const overdue = mine.filter(
-      (a) => a.due_date !== null && a.due_date < today && a.status !== 'done' && a.status !== 'approved',
-    ).length;
-    const total = mine.length;
-    return {
-      ...d,
-      done,
-      total,
-      pct: total === 0 ? 0 : Math.round((done / total) * 100),
-      overdue,
-    };
-  });
-}
-
-export function isOverdue(a: Pick<AssignmentRow, 'due_date' | 'status'>): boolean {
-  if (!a.due_date) return false;
-  if (a.status === 'done' || a.status === 'approved') return false;
-  return a.due_date < new Date().toISOString().slice(0, 10);
-}
-
-/** Days until the event. Clamped at zero once it has started. */
-export function daysToEvent(from: Date = new Date()): number {
-  const target = new Date('2027-03-20T00:00:00Z').getTime();
-  const diff = Math.ceil((target - from.getTime()) / 86_400_000);
-  return diff > 0 ? diff : 0;
-}
