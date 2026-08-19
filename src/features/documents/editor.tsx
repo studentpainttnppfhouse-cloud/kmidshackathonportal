@@ -15,11 +15,15 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered,
   ListChecks, Table as TableIcon, Link2, Code, Quote, Minus, Undo2, Redo2,
-  Heading1, Heading2, Heading3, Highlighter, Check, CloudOff, Loader2,
+  Heading1, Heading2, Heading3, Highlighter, Check, CloudOff, Loader2, Users, Wifi,
 } from 'lucide-react';
+import { cursorColorFor } from '@/lib/collab/provider';
+import { collabAvailable, useCollab, type CollabPeer, type CollabStatus } from '@/lib/collab/use-collab';
 import { saveDocumentAction } from './actions';
 
 type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
@@ -31,24 +35,37 @@ export function DocumentEditor({
   initialContent,
   initialTitle,
   editable,
+  me,
 }: {
   documentId: string;
   initialContent: object;
   initialTitle: string;
   editable: boolean;
+  me: { name: string; email: string };
 }) {
+  const collabEnabled = collabAvailable();
+  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled);
   const [title, setTitle] = useState(initialTitle);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleRef = useRef(initialTitle);
 
+  // The editor cannot be built until we know whether a Yjs document is joining
+  // it — Collaboration replaces the built-in history, and swapping extensions
+  // afterwards would remount and lose the caret.
+  const collabSettled = !collabEnabled || status !== 'connecting';
+
   const editor = useEditor({
     editable,
     // Tiptap renders differently on the server; let the client own it.
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+        // Yjs owns undo/redo once collaborating; two histories would fight.
+        ...(provider ? { history: false } : {}),
+      }),
       Underline,
       Link.configure({ openOnClick: false, autolink: true }),
       Image,
@@ -61,8 +78,19 @@ export function DocumentEditor({
       TableRow,
       TableHeader,
       TableCell,
+      ...(provider
+        ? [
+            Collaboration.configure({ document: provider.doc }),
+            CollaborationCursor.configure({
+              provider,
+              user: { name: me.name, color: cursorColorFor(me.email) },
+            }),
+          ]
+        : []),
     ],
-    content: initialContent,
+    // With collaboration on, content comes from the Yjs document instead —
+    // see the seeding effect below.
+    content: provider ? undefined : initialContent,
     editorProps: {
       attributes: {
         class: 'tiptap focus:outline-none min-h-[440px]',
@@ -70,16 +98,23 @@ export function DocumentEditor({
       },
     },
     onUpdate: () => scheduleSave(),
-  });
+  }, [provider, collabSettled]);
+
+  /**
+   * The debounce has to stay stable — rebuilding it on every keystroke would
+   * reset the timer and nothing would ever save. But it also cannot close over
+   * `flush` directly: `useEditor` returns null on the first render, so the
+   * captured `flush` would test `if (!editor) return` against that null
+   * forever and autosave would silently never fire. A ref gives a stable
+   * callback that always reads the current one.
+   */
+  const flushRef = useRef<() => Promise<void>>(async () => {});
 
   const scheduleSave = useCallback(() => {
     if (!editable) return;
     setSaveState('dirty');
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(), AUTOSAVE_DELAY_MS);
-    // `flush` is stable enough for this debounce; re-creating it on every
-    // keystroke would reset the timer and defeat the point.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    timer.current = setTimeout(() => void flushRef.current(), AUTOSAVE_DELAY_MS);
   }, [editable]);
 
   const flush = useCallback(async () => {
@@ -99,12 +134,34 @@ export function DocumentEditor({
     }
   }, [editor, editable, documentId]);
 
+  flushRef.current = flush;
+
   // Save on the way out, so a closed tab does not lose the last edit.
   useEffect(() => {
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      if (timer.current) {
+        clearTimeout(timer.current);
+        // A pending edit at unmount would otherwise be lost.
+        void flushRef.current();
+      }
     };
   }, []);
+
+  // Seed the shared Yjs document from what is stored, but only when this
+  // client joined first. A later joiner receives the state from a peer, and
+  // seeding again would insert the stored copy a second time.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!editor || !provider || seeded.current) return;
+    if (isFirst !== true) {
+      seeded.current = true;
+      return;
+    }
+    if (editor.isEmpty) {
+      editor.commands.setContent(initialContent, false);
+    }
+    seeded.current = true;
+  }, [editor, provider, isFirst, initialContent]);
 
   if (!editor) {
     return <div className="py-16 text-center text-[13px] text-muted-2">Loading editor…</div>;
@@ -133,8 +190,9 @@ export function DocumentEditor({
         <EditorContent editor={editor} />
       </div>
 
-      <div className="flex items-center gap-2 border-t border-line bg-surface-2 px-5 py-2.5 text-[12px] font-semibold">
+      <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface-2 px-5 py-2.5 text-[12px] font-semibold">
         <SaveIndicator state={saveState} />
+        <CollabIndicator status={status} peers={peers} enabled={collabEnabled} />
         {error ? <span className="text-danger">{error}</span> : null}
         <span className="ml-auto text-muted-2">
           {editor.storage.characterCount?.words?.() ?? editor.getText().split(/\s+/).filter(Boolean).length}{' '}
@@ -142,6 +200,49 @@ export function DocumentEditor({
         </span>
       </div>
     </div>
+  );
+}
+
+function CollabIndicator({
+  status, peers, enabled,
+}: { status: CollabStatus; peers: CollabPeer[]; enabled: boolean }) {
+  if (!enabled) return null;
+
+  if (status === 'connecting') {
+    return <span className="text-muted-2">Connecting…</span>;
+  }
+
+  if (status === 'solo') {
+    return (
+      <span className="flex items-center gap-1.5 text-muted-2" title="Realtime is unavailable — your edits still save normally.">
+        <Users size={13} /> Editing alone
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-2">
+      <span className="flex items-center gap-1.5 text-teal">
+        <Wifi size={13} /> Live
+      </span>
+      {peers.length > 0 ? (
+        <span className="flex items-center gap-1">
+          {peers.slice(0, 4).map((p) => (
+            <span
+              key={p.clientId}
+              title={p.name}
+              className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white"
+              style={{ background: p.color }}
+            >
+              {p.name.slice(0, 2).toUpperCase()}
+            </span>
+          ))}
+          <span className="text-muted-2">
+            {peers.length === 1 ? '1 other editing' : `${peers.length} others editing`}
+          </span>
+        </span>
+      ) : null}
+    </span>
   );
 }
 

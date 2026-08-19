@@ -15,16 +15,36 @@ departments, with heavy phone usage on the event days themselves.
 
 ## Quick start
 
+### See it running in two minutes, with no accounts
+
+If you have Postgres on your machine, this needs nothing else:
+
 ```bash
 git clone <this repo>
 cd kmidshackathonportal
 npm install
-cp .env.example .env.local     # then fill it in — see below
-npm run dev                    # http://localhost:3000
+npm run dev:local              # http://localhost:3000
 ```
 
-You need a Supabase project before the app will render anything. Setting one
-up takes about ten minutes.
+That creates the database, applies the migrations, loads demo content, and
+starts the app. Sign in as **june@kmids.ac.th** — no password, no setup.
+
+`dev:local` runs a small local stand-in for Supabase (`scripts/dev-api.mjs`)
+so you can develop without a cloud account. It applies the same RLS policies
+as production, so what you build against is what ships. It does not implement
+Realtime, so live collaboration is off locally — everything else works.
+
+### Going live on Supabase
+
+```bash
+cp .env.example .env.local     # fill in the five values below
+npm run db:setup -- --seed     # migrations, storage bucket, demo data
+npm run dev
+```
+
+`db:setup` is resumable and safe to re-run: it tracks which migrations have
+already applied and skips them. Setting up the Supabase project takes about
+ten minutes the first time.
 
 ### 1. Create the Supabase project
 
@@ -187,10 +207,24 @@ those actions writes to the audit log.
 ## Testing
 
 ```bash
-npm test          # unit tests — permissions, forms, spreadsheet, export
+npm test          # unit tests — permissions, forms, spreadsheet, export, collab
 npm run typecheck # TypeScript, strict mode
 npm run build     # production build
+npm run smoke     # drives the real app in a browser (needs it running)
 ```
+
+### The browser smoke tests
+
+`npm run smoke` signs in and exercises the flows that matter: creating a task,
+commenting, the approval gate, view-as being read-only while keeping console
+access, the logged-out public form and its conditional branching, phone
+check-in, and the document editor's autosave and version history. It exits
+non-zero on failure.
+
+Start the app first (`npm run dev:local` in another terminal). These found
+three bugs that the type checker and unit tests had both passed over —
+including autosave silently never firing — so it is worth running before a
+release.
 
 ### The database permission tests
 
@@ -282,11 +316,16 @@ Called out honestly so nobody rediscovers them the hard way.
   dialogue, rather than generating a PDF server-side. A real PDF would mean
   shipping a headless browser to a serverless function — a lot of weight for a
   feature used a handful of times a term. DOCX export is a genuine `.docx`.
-- **Realtime collaboration** is not wired up yet. The document and spreadsheet
-  schemas carry a `yjs_state` column and the editors autosave with a visible
-  save state, but live cursors and presence still need Yjs + Supabase Realtime
-  connecting. Two people editing the same document right now will overwrite
-  each other on save.
+- **Realtime collaboration works on documents, not spreadsheets.** Documents
+  merge through Yjs over Supabase Realtime, with live cursors and presence.
+  When Realtime is unreachable the editor falls back to single-user autosave
+  and says so, rather than refusing to open. Spreadsheets still last-write-wins
+  — the schema carries `yjs_state` for them but the grid is not wired up.
+- **The collaboration path is tested by unit tests, not against live Supabase.**
+  `tests/collab.test.ts` runs two providers against an in-memory channel and
+  asserts they converge, that a late joiner does not double the content, and
+  that a departing peer's cursor is removed. Worth a two-browser sanity check
+  once you have a project.
 - **Email delivery** is not connected. Invites appear in the Owner Console and
   work the moment the person signs in, but no email is actually sent — tell
   people directly, or paste them an invite key. The daily digest in §5.10 of

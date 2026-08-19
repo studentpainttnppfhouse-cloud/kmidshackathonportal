@@ -86,6 +86,7 @@ export default async function DocumentPage({
           initialContent={row.content}
           initialTitle={row.title}
           editable={editable}
+          me={{ name: user.nickname ?? user.name ?? user.email, email: user.email }}
         />
 
         <div className="flex flex-col gap-5">

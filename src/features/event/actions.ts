@@ -21,10 +21,17 @@ export async function checkInAction(day: string, direction: 'in' | 'out'): Promi
 
   const db = await userClient(user.id);
   const now = new Date().toISOString();
-  const column = direction === 'in' ? 'checked_in_at' : 'checked_out_at';
+
+  // Checking in has to clear any previous check-out, otherwise someone who
+  // steps out for lunch and comes back still reads as off-site for the rest of
+  // the day — and the on-site board is what Operations use to find people.
+  const patch =
+    direction === 'in'
+      ? { checked_in_at: now, checked_out_at: null }
+      : { checked_out_at: now };
 
   const { error } = await db.from('checkins').upsert(
-    { user_id: user.id, day: parsed.data, [column]: now },
+    { user_id: user.id, day: parsed.data, ...patch },
     { onConflict: 'user_id,day' },
   );
 

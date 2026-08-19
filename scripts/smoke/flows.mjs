@@ -124,12 +124,18 @@ ok('event-day renders on a phone viewport', (await p3.locator('text=Run sheet').
 await p3.click('text=Check-in');
 await p3.waitForTimeout(900);
 await p3.screenshot({ path: `${OUT}/f8-phone-checkin.png` });
-const checkinBtn = await p3.locator('button:has-text("Check in")').count();
-ok('check-in control present', checkinBtn > 0);
-if (checkinBtn) {
-  await p3.click('button:has-text("Check in")');
+// The account may already be checked in from an earlier run, so assert on the
+// toggle rather than on one particular label.
+const statusText = () => p3.locator('.text-\\[22px\\]').first().textContent();
+const wasCheckedIn = ((await statusText()) ?? '').trim() === 'Checked in';
+const toggle = p3.locator('button:has-text("Check in"), button:has-text("Check out")').first();
+ok('check-in control present', (await toggle.count()) > 0);
+
+if (await toggle.count()) {
+  await toggle.click();
   await p3.waitForTimeout(2500);
-  ok('check in works', (await p3.locator('text=Checked in').count()) > 0);
+  const nowCheckedIn = ((await statusText()) ?? '').trim() === 'Checked in';
+  ok('check-in toggles state', nowCheckedIn !== wasCheckedIn, `${wasCheckedIn} -> ${nowCheckedIn}`);
   await p3.screenshot({ path: `${OUT}/f9-checkedin.png` });
 }
 

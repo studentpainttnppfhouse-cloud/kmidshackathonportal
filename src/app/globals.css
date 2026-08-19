@@ -277,3 +277,38 @@
   height: 0;
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Collaborative cursors
+   Each editor gets a coloured caret with their name above it. The label only
+   appears on hover after the first couple of seconds so a room full of people
+   does not bury the text.
+   --------------------------------------------------------------------------- */
+.collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  border-radius: 4px 4px 4px 0;
+  padding: 0.1rem 0.35rem;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: normal;
+  color: #fff;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.collaboration-cursor__selection {
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
