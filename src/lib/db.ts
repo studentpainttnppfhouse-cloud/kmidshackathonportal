@@ -1,0 +1,220 @@
+import 'server-only';
+import { userClient } from '@/lib/supabase/user';
+import type {
+  AssignmentStatus, Department, Priority, SessionUser, Tier,
+} from '@/lib/types';
+
+/**
+ * Shared reads.
+ *
+ * Everything here goes through the signed-in user's own token, so the rows
+ * that come back are already filtered by RLS. There is no "and also check the
+ * tier in JavaScript" step, because that would be a second source of truth
+ * that could drift from the policies.
+ */
+
+export interface AssignmentRow {
+  id: string;
+  title: string;
+  description: string | null;
+  department_id: string | null;
+  due_date: string | null;
+  priority: Priority;
+  status: AssignmentStatus;
+  created_by: string | null;
+  approved_by: string | null;
+  document_id: string | null;
+  created_at: string;
+  assignees: { user_id: string; nickname: string | null; name: string | null }[];
+}
+
+export interface AnnouncementRow {
+  id: string;
+  title: string;
+  body: string;
+  scope: 'all' | 'department';
+  department_id: string | null;
+  pinned: boolean;
+  created_at: string;
+  author: { nickname: string | null; name: string | null } | null;
+}
+
+export async function getDepartments(user: SessionUser): Promise<Department[]> {
+  const db = await userClient(user.id);
+  const { data } = await db
+    .from('departments')
+    .select('id, name, slug, description, head_user_id, color, sort_order')
+    .is('deleted_at', null)
+    .order('sort_order');
+  return (data ?? []) as Department[];
+}
+
+const ASSIGNMENT_SELECT = `
+  id, title, description, department_id, due_date, priority, status,
+  created_by, approved_by, document_id, created_at,
+  assignment_assignees ( user_id, users ( nickname, name ) )
+`;
+
+interface RawAssignment {
+  id: string;
+  title: string;
+  description: string | null;
+  department_id: string | null;
+  due_date: string | null;
+  priority: Priority;
+  status: AssignmentStatus;
+  created_by: string | null;
+  approved_by: string | null;
+  document_id: string | null;
+  created_at: string;
+  assignment_assignees: {
+    user_id: string;
+    users: { nickname: string | null; name: string | null } | null;
+  }[] | null;
+}
+
+function shapeAssignment(row: RawAssignment): AssignmentRow {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    department_id: row.department_id,
+    due_date: row.due_date,
+    priority: row.priority,
+    status: row.status,
+    created_by: row.created_by,
+    approved_by: row.approved_by,
+    document_id: row.document_id,
+    created_at: row.created_at,
+    assignees: (row.assignment_assignees ?? []).map((a) => ({
+      user_id: a.user_id,
+      nickname: a.users?.nickname ?? null,
+      name: a.users?.name ?? null,
+    })),
+  };
+}
+
+export async function getAssignments(
+  user: SessionUser,
+  opts: { departmentId?: string | null; mineOnly?: boolean; limit?: number } = {},
+): Promise<AssignmentRow[]> {
+  const db = await userClient(user.id);
+  let query = db
+    .from('assignments')
+    .select(ASSIGNMENT_SELECT)
+    .is('deleted_at', null)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .limit(opts.limit ?? 300);
+
+  if (opts.departmentId !== undefined && opts.departmentId !== null) {
+    query = query.eq('department_id', opts.departmentId);
+  }
+
+  const { data } = await query;
+  const rows = ((data ?? []) as unknown as RawAssignment[]).map(shapeAssignment);
+
+  if (opts.mineOnly) {
+    return rows.filter((r) => r.assignees.some((a) => a.user_id === user.id));
+  }
+  return rows;
+}
+
+export async function getAnnouncements(
+  user: SessionUser,
+  limit = 20,
+): Promise<AnnouncementRow[]> {
+  const db = await userClient(user.id);
+  const { data } = await db
+    .from('announcements')
+    .select('id, title, body, scope, department_id, pinned, created_at, users:author_id ( nickname, name )')
+    .is('deleted_at', null)
+    .order('pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  return ((data ?? []) as unknown as (Omit<AnnouncementRow, 'author'> & {
+    users: { nickname: string | null; name: string | null } | null;
+  })[]).map((r) => ({
+    id: r.id,
+    title: r.title,
+    body: r.body,
+    scope: r.scope,
+    department_id: r.department_id,
+    pinned: r.pinned,
+    created_at: r.created_at,
+    author: r.users,
+  }));
+}
+
+export interface DirectoryUser {
+  id: string;
+  email: string;
+  name: string | null;
+  nickname: string | null;
+  grade: string | null;
+  role_title: string | null;
+  department_id: string | null;
+  tier: Tier;
+  status: string;
+  is_reserve: boolean;
+  is_mentor: boolean;
+  is_alumni: boolean;
+  avatar_url: string | null;
+}
+
+export async function getDirectory(user: SessionUser): Promise<DirectoryUser[]> {
+  const db = await userClient(user.id);
+  const { data } = await db
+    .from('users')
+    .select(
+      'id, email, name, nickname, grade, role_title, department_id, tier, status, is_reserve, is_mentor, is_alumni, avatar_url',
+    )
+    .is('deleted_at', null)
+    .order('tier', { ascending: false })
+    .order('nickname');
+  return (data ?? []) as DirectoryUser[];
+}
+
+/** Progress per department, used by the Head and Admin dashboards. */
+export interface DeptProgress extends Department {
+  done: number;
+  total: number;
+  pct: number;
+  overdue: number;
+}
+
+export function summariseByDepartment(
+  departments: Department[],
+  assignments: AssignmentRow[],
+): DeptProgress[] {
+  const today = new Date().toISOString().slice(0, 10);
+
+  return departments.map((d) => {
+    const mine = assignments.filter((a) => a.department_id === d.id);
+    const done = mine.filter((a) => a.status === 'done' || a.status === 'approved').length;
+    const overdue = mine.filter(
+      (a) => a.due_date !== null && a.due_date < today && a.status !== 'done' && a.status !== 'approved',
+    ).length;
+    const total = mine.length;
+    return {
+      ...d,
+      done,
+      total,
+      pct: total === 0 ? 0 : Math.round((done / total) * 100),
+      overdue,
+    };
+  });
+}
+
+export function isOverdue(a: Pick<AssignmentRow, 'due_date' | 'status'>): boolean {
+  if (!a.due_date) return false;
+  if (a.status === 'done' || a.status === 'approved') return false;
+  return a.due_date < new Date().toISOString().slice(0, 10);
+}
+
+/** Days until the event. Clamped at zero once it has started. */
+export function daysToEvent(from: Date = new Date()): number {
+  const target = new Date('2027-03-20T00:00:00Z').getTime();
+  const diff = Math.ceil((target - from.getTime()) / 86_400_000);
+  return diff > 0 ? diff : 0;
+}
