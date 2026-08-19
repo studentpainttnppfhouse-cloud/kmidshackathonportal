@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Palette lifted verbatim from the Claude Design export.
+ * Light is the shipping theme; dark is opt-in via the topbar toggle.
+ */
+:root {
+  --bg: #fdf2f8;
+  --surface: #ffffff;
+  --surface-2: #fdf2f8;
+  --surface-3: #fce7f3;
+  --text: #1f2937;
+  --muted: #94a3b8;
+  --muted-2: #64748b;
+  --pink: #ec4899;
+  --deep: #be185d;
+  --teal: #2dd4bf;
+  --border: #eee2e9;
+  --border-2: #e2e8f0;
+  --wash: #fdf2f8;
+  --danger: #e11d66;
+  --danger-soft: #fee2e2;
+  --warn: #f59e0b;
+  --success: #22c55e;
+  --shadow: 0 8px 28px rgba(190, 60, 120, 0.1);
+  --shadow-sm: 0 2px 10px rgba(190, 60, 120, 0.08);
+}
+
+[data-theme='dark'] {
+  --bg: #17141a;
+  --surface: #201b25;
+  --surface-2: #2a2431;
+  --surface-3: #342730;
+  --text: #f4e9f0;
+  --muted: #9a8fa0;
+  --muted-2: #b9aebe;
+  --pink: #f472b6;
+  --deep: #f9a8d4;
+  --teal: #2dd4bf;
+  --border: #372e3e;
+  --border-2: #372e3e;
+  --wash: #221c28;
+  --danger: #fb7185;
+  --danger-soft: #4c1d24;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    transition: background 0.25s, color 0.25s;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--pink);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--deep);
+  }
+
+  /* WCAG AA: every interactive element keeps a visible focus ring. */
+  :focus-visible {
+    outline: 2px solid var(--pink);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+
+  .btn-primary {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border-0 bg-pink px-4 py-2.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-pink bg-surface px-4 py-2.5 text-[13px] font-semibold text-pink transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-tertiary {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border-0 bg-transparent px-3 py-2 text-[13px] font-medium text-muted-2 transition-colors hover:text-ink;
+  }
+
+  .btn-quiet {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-line-2 bg-surface-2 px-3 py-2 text-[12.5px] font-semibold text-ink transition-colors hover:border-pink;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-line-2 bg-surface-2 px-3 py-2.5 text-[13px] text-ink outline-none transition-colors placeholder:text-muted focus:border-pink;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[12px] font-semibold text-muted-2;
+  }
+
+  .mono-tag {
+    @apply font-mono text-[10px] font-bold uppercase tracking-[0.04em];
+  }
+}
