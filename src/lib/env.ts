@@ -4,10 +4,13 @@ import { z } from 'zod';
  * The environment contract.
  *
  * Deliberately short. The portal needs a database to talk to and it needs to
- * know who the Owners are; everything else has a sensible default. A
- * misconfigured deploy is the one failure a first-time deployer will hit, so
- * this module reports what is missing rather than throwing a digest at them —
- * see `envProblems` and the screen it feeds.
+ * know who the Owners are; everything else has a sensible default.
+ *
+ * `env()` throws when something required is missing, but `envProblems()`
+ * reports the same check without throwing, so a diagnostic can name the
+ * variable and say where its value comes from. `/api/health/db` is what reads
+ * it — deliberately a single endpoint rather than a gate above every route,
+ * because a gate that is wrong about one alias hides an app that works.
  */
 const schema = z.object({
   /** The full PostgreSQL connection URI. */

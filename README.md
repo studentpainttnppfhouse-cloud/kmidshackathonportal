@@ -81,11 +81,17 @@ also need a superuser or `rds_superuser` on the first run.
 `RDS_DATABASE_URL` and `PG_CONNECTION_STRING`, so a value injected under one of
 those names works without being copied into a second variable.
 
-**A deployment missing any required variable shows a screen naming it**, rather
-than Next's opaque "a server-side exception has occurred". `/api/health/db`
-answers the next question — whether the connection works and whether the schema
-has been applied — and is reachable without signing in, because the deploy you
-most need to diagnose is the one where nobody can sign in yet.
+**`/api/health/db` is where you find out what is wrong with a deployment.** It
+names any missing variable and where its value comes from, then says whether
+the connection works and whether the schema has been applied. It is reachable
+without signing in, because the deploy you most need to diagnose is the one
+where nobody can sign in yet.
+
+There is deliberately no "finish setting up" screen gating the app. One was
+tried and removed: a gate that is wrong about a single alias hides an app that
+works perfectly, which is worse than the digest it was replacing. A missing
+variable now throws a named error server-side, and the health endpoint explains
+it.
 
 ---
 
