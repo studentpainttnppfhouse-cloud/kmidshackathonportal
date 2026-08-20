@@ -1,0 +1,100 @@
+# Render Blueprint for the KMIDS Hackathon 2027 staff portal.
+#
+# To use it: push this file, then create a new Blueprint at
+# https://dashboard.render.com/blueprints and point it at this repository.
+# Render reads the service below and asks you for every value marked
+# `sync: false` before the first deploy.
+#
+# The README describes deploying to Vercel; this is the same app on Render.
+# Nothing here is Render-specific inside the code — the portal is a stock
+# Next.js server, so `next build` / `next start` is all it needs.
+
+services:
+  - type: web
+    name: kmids-hackathon-portal
+    runtime: node
+    # Bangkok is closer to Singapore than to any other Render region.
+    region: singapore
+    plan: starter
+    # No `branch:` — Render tracks the repository's default branch, whatever
+    # it is named. Set it explicitly if you want deploys from another branch.
+    buildCommand: npm ci && npm run build
+    # `next start` binds to $PORT, which Render sets for us.
+    startCommand: npm run start
+
+    # No `healthCheckPath`. The one health endpoint the app has,
+    # /api/health/db, reports on the *optional* Aurora cluster and answers 503
+    # when Aurora is not configured — which is the normal, supported state.
+    # Pointing Render at it would fail every deploy of a Supabase-only portal.
+    # Render falls back to checking that the service binds its port, which is
+    # the right signal here.
+
+    autoDeploy: true
+
+    envVars:
+      # Next 15 and React 19 need a modern Node. Match this to whatever you
+      # develop against.
+      - key: NODE_VERSION
+        value: "22"
+
+      # ---------------------------------------------------------------------
+      # Supabase — Settings > API in the project dashboard.
+      #
+      # The two NEXT_PUBLIC_ values are compiled into the browser bundle at
+      # build time, so changing either one needs a fresh deploy, not just a
+      # restart.
+      # ---------------------------------------------------------------------
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+
+      # Server-side only. Bypasses every RLS policy — never expose it to the
+      # browser, and never give it a NEXT_PUBLIC_ name.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # Settings > API > JWT Settings > JWT Secret. Sign-in is email-only, so
+      # the app mints its own PostgREST token with this secret.
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+
+      # ---------------------------------------------------------------------
+      # Owner bootstrap. Two Owners always exist so that one graduating
+      # student is never a single point of failure.
+      # ---------------------------------------------------------------------
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_BACKUP_EMAIL
+        sync: false
+
+      # Anyone with an address at this domain may sign in; everyone else needs
+      # an explicit invite from an Owner.
+      - key: SCHOOL_EMAIL_DOMAIN
+        value: kmids.ac.th
+
+      # ---------------------------------------------------------------------
+      # Aurora PostgreSQL — entirely optional; the portal runs on Supabase
+      # alone. Uncomment these only if you are also running the Aurora
+      # cluster described in README.md > Aurora PostgreSQL on AWS.
+      #
+      # Render has no OIDC exchange with AWS, so IAM auth over OIDC (the
+      # Vercel path in the README) is not available here. Use a password, or
+      # give the whole connection as one URI.
+      # ---------------------------------------------------------------------
+      # - key: RDS_HOSTNAME
+      #   sync: false
+      # - key: RDS_PORT
+      #   value: "5432"
+      # - key: RDS_DATABASE
+      #   sync: false
+      # - key: RDS_USERNAME
+      #   sync: false
+      # - key: RDS_PASSWORD
+      #   sync: false
+      # - key: AWS_REGION
+      #   value: ap-southeast-1
+      #
+      # Or, instead of the five above:
+      # - key: AURORA_DATABASE_URL
+      #   sync: false
