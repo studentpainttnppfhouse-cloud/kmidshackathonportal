@@ -265,6 +265,15 @@ edited *even by the Owner*, and that `DELETE` only ever soft-deletes. See
 Because sessions live in the database and on the device, a deploy does not
 sign anyone out.
 
+**If the deployed site shows "Finish setting up":** one or more variables from
+the table above are missing or malformed on that deployment. The screen names
+each one and where its value comes from. Set them, then **redeploy** — the
+`NEXT_PUBLIC_` values are compiled into the build, so saving them in the Vercel
+dashboard does not change a deployment that already exists.
+
+Preview deployments have their own environment. A variable added only to
+Production leaves every `-git-<branch>` preview URL on that screen.
+
 **Custom domain:** add it under **Settings → Domains**. Public form links use
 the request's own host, so they pick up the new domain automatically.
 
