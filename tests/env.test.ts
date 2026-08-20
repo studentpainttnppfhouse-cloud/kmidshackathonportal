@@ -9,6 +9,12 @@ const KEYS = [
   'OWNER_EMAIL',
   'OWNER_BACKUP_EMAIL',
   'SCHOOL_EMAIL_DOMAIN',
+  // The names a Vercel Marketplace Supabase project arrives under.
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+  'SUPABASE_PUBLISHABLE_KEY',
+  'SUPABASE_SECRET_KEY',
 ] as const;
 
 const COMPLETE: Record<string, string> = {
@@ -24,9 +30,12 @@ const COMPLETE: Record<string, string> = {
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
+  // Assigning undefined to process.env stores the string "undefined", which a
+  // presence check would happily accept — so absent names are deleted, not set.
   for (const k of KEYS) {
     saved[k] = process.env[k];
-    process.env[k] = COMPLETE[k];
+    if (COMPLETE[k] === undefined) delete process.env[k];
+    else process.env[k] = COMPLETE[k];
   }
 });
 
@@ -86,5 +95,53 @@ describe('envProblems', () => {
   it('points at where each value comes from', () => {
     delete process.env.SUPABASE_JWT_SECRET;
     expect(envProblems()[0]?.source).toContain('JWT Secret');
+  });
+});
+
+describe('Vercel Marketplace variable names', () => {
+  it('accepts the unprefixed names the integration injects', () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_URL = 'https://demo.supabase.co';
+    process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.SUPABASE_SECRET_KEY = 'secret-key';
+
+    expect(envProblems()).toEqual([]);
+  });
+
+  it('accepts the newer publishable/secret key vocabulary', () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_abc';
+    process.env.SUPABASE_SECRET_KEY = 'sb_secret_abc';
+
+    expect(envProblems()).toEqual([]);
+  });
+
+  it('prefers the canonical name when both are set', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://canonical.supabase.co';
+    process.env.SUPABASE_URL = 'https://alias.supabase.co';
+
+    const { publicSupabaseConfig } = await import('@/lib/env');
+    expect(publicSupabaseConfig().url).toBe('https://canonical.supabase.co');
+  });
+
+  it('ignores an alias set to the empty string', () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env.SUPABASE_URL = '';
+
+    expect(envProblems().map((p) => p.key)).toEqual(['NEXT_PUBLIC_SUPABASE_URL']);
+  });
+
+  it('tells the setup screen which other names it would have accepted', () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    expect(envProblems()[0]?.alsoAccepts).toEqual(['SUPABASE_URL']);
+  });
+
+  it('offers no alias for the JWT secret, which must be copied by hand', () => {
+    delete process.env.SUPABASE_JWT_SECRET;
+    expect(envProblems()[0]?.alsoAccepts).toEqual([]);
+    expect(envProblems()[0]?.source).toContain('by hand');
   });
 });

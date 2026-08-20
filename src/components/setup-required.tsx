@@ -43,6 +43,18 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
                 <span className="text-[12px] text-danger">{p.reason}</span>
               </div>
               {p.source ? <p className="mt-1 text-[12.5px] text-muted-2">{p.source}</p> : null}
+              {p.alsoAccepts.length > 0 ? (
+                <p className="mt-1 text-[12px] text-muted">
+                  Also read from{' '}
+                  {p.alsoAccepts.map((name, i) => (
+                    <span key={name}>
+                      {i > 0 ? ', ' : ''}
+                      <code className="font-mono">{name}</code>
+                    </span>
+                  ))}
+                  .
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -53,10 +65,14 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
           </h2>
           {onVercel ? (
             <ol className="list-decimal space-y-1 pl-4 text-[12.5px] text-muted-2">
-              <li>Project → Settings → Environment Variables.</li>
               <li>
-                Add each variable above for Production, Preview, and Development, using the values
-                from <code className="font-mono">.env.example</code>.
+                Easiest path: Project → <strong>Storage</strong> → add <strong>Supabase</strong>{' '}
+                from the Marketplace. It provisions the project and sets most of these for you.
+              </li>
+              <li>
+                Then fill any gap by hand under Settings → Environment Variables, for Production,
+                Preview, and Development. <code className="font-mono">SUPABASE_JWT_SECRET</code> and
+                the <code className="font-mono">OWNER_</code> addresses are not provisioned for you.
               </li>
               <li>
                 Deployments → ⋯ → <strong>Redeploy</strong>. The{' '}

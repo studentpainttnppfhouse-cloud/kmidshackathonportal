@@ -114,6 +114,18 @@ address restores it — the app repairs the account back to T4 on sign-in.
 
 `.env.local` is gitignored. Never commit real keys.
 
+**Alternate names.** A Supabase project added through the Vercel Marketplace
+injects its own variable names, so each value is also read from the names below
+— set either one. `SUPABASE_JWT_SECRET` has no alternate: the integration does
+not reliably provision it, so copy it across by hand.
+
+| Canonical | Also read from |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | `SUPABASE_URL` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PUBLISHABLE_KEY` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `SUPABASE_SECRET_KEY` |
+| `SUPABASE_DB_URL` (setup script only) | `POSTGRES_URL_NON_POOLING`, `POSTGRES_URL`, `DATABASE_URL` |
+
 ---
 
 ## How sign-in works
@@ -258,9 +270,19 @@ edited *even by the Owner*, and that `DELETE` only ever soft-deletes. See
 ## Deploying to Vercel
 
 1. Push to GitHub and import the repo at [vercel.com/new](https://vercel.com/new).
-2. Add every variable from the table above under **Settings → Environment
-   Variables**, for Production *and* Preview.
-3. Deploy. The build command is the default `next build`.
+2. Provision the database. The app needs Supabase specifically — not just
+   Postgres — because it talks to PostgREST, Storage and Realtime over HTTP and
+   leans on RLS for permissions. The quickest route is **Storage → add
+   Supabase** from the Vercel Marketplace, which creates the project and sets
+   most of the variables for you.
+3. Fill the gaps under **Settings → Environment Variables**, for Production
+   *and* Preview: `SUPABASE_JWT_SECRET`, `OWNER_EMAIL` and `OWNER_BACKUP_EMAIL`
+   are not provisioned for you.
+4. Run the schema against the new project:
+   `vercel env pull .env.local && npm run db:setup`. The setup script
+   understands the Marketplace names, including `POSTGRES_URL_NON_POOLING` for
+   the migration connection.
+5. Deploy. The build command is the default `next build`.
 
 Because sessions live in the database and on the device, a deploy does not
 sign anyone out.
