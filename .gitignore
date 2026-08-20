@@ -4,6 +4,10 @@ out/
 build/
 .DS_Store
 *.pem
+# ...except AWS's public RDS trust store. It is a bundle of CA certificates,
+# not a key, and committing it is what lets the app verify Aurora's TLS
+# certificate instead of accepting any certificate at all.
+!certs/rds-global-bundle.pem
 npm-debug.log*
 .env
 .env.local
