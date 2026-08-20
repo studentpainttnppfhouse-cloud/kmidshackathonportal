@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { adminClient } from '@/lib/supabase/admin';
+import { admin } from '@/lib/db/client';
 import { audit } from '@/lib/audit';
 import { canExportAll } from '@/lib/permissions';
-import { STORAGE_BUCKET } from '@/features/files/constants';
+
+/** `pg` needs Node APIs, so this cannot run on the edge runtime. */
+export const runtime = 'nodejs';
 
 /**
  * Full export (§2.6) — every table as JSON plus a manifest of stored files,
@@ -26,7 +28,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Owner only' }, { status: 403 });
   }
 
-  const db = adminClient();
+  const db = admin();
   const data: Record<string, unknown> = {};
 
   for (const table of TABLES) {
@@ -35,14 +37,32 @@ export async function GET() {
     data[table] = error ? { error: error.message } : rows;
   }
 
-  const { data: objects } = await db.storage.from(STORAGE_BUCKET).list('', { limit: 1000 });
+  // A manifest of the uploads rather than the uploads themselves: the bytes
+  // live in `file_blobs` and would turn a readable JSON export into hundreds
+  // of megabytes of base64. Each entry says where to fetch its contents.
+  const { data: uploads } = await db
+    .from('files')
+    .select('id, name, mime, size, storage_path')
+    .is('deleted_at', null)
+    .limit(5000);
 
   const payload = {
     exportedAt: new Date().toISOString(),
     exportedBy: user.email,
-    schemaVersion: '0090',
+    schemaVersion: '0100',
     tables: data,
-    storage: { bucket: STORAGE_BUCKET, objects: objects ?? [] },
+    storage: {
+      kind: 'postgres:file_blobs',
+      objects: (uploads ?? [])
+        .filter((f) => f.storage_path)
+        .map((f) => ({
+          id: f.id,
+          name: f.name,
+          mime: f.mime,
+          size: f.size,
+          downloadPath: `/api/files/${f.id}`,
+        })),
+    },
   };
 
   await audit({

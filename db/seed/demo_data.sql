@@ -5,7 +5,8 @@
 -- rather than a set of empty screens — useful for showing the team what this
 -- is, and for finding layout problems that only appear with real data.
 --
---   psql "$SUPABASE_DB_URL" -f supabase/seed/demo_data.sql
+--   npm run db:setup -- --seed
+--   psql "$DATABASE_URL" -f db/seed/demo_data.sql
 --
 -- Safe to re-run. A teardown block is at the bottom of the file.
 -- =============================================================================

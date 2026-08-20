@@ -7,8 +7,8 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwareness
  * Yjs gives conflict-free merging; all this provider has to do is move opaque
  * update bytes between peers and keep awareness (cursors, names) in sync.
  *
- * The transport is injected rather than hard-wired to Supabase so the merge
- * and hand-off logic can be tested without a network — see
+ * The transport is injected rather than hard-wired to the SSE channel so the
+ * merge and hand-off logic can be tested without a network — see
  * tests/collab.test.ts, which runs two providers against an in-memory channel
  * and asserts they converge.
  */

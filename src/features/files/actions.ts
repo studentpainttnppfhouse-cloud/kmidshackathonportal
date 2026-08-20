@@ -3,11 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
+import { asUser } from '@/lib/db/client';
+import { deleteBlob, putBlob } from '@/lib/files/storage';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
-import { MAX_FILE_BYTES, STORAGE_BUCKET } from './constants';
+import { MAX_FILE_BYTES } from './constants';
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -55,24 +55,17 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
   if (!parsed.success) return { ok: false, error: 'Check the upload form.' };
 
   const v = parsed.data;
-  const key = `${v.department_id ?? 'general'}/${crypto.randomUUID()}-${sanitise(file.name)}`;
 
-  // Storage upload uses the service role; the row insert below goes through
-  // the user's token, so RLS still decides whether they may file it here.
-  const upload = await adminClient()
-    .storage.from(STORAGE_BUCKET)
-    .upload(key, file, { contentType: file.type || 'application/octet-stream', upsert: false });
-
-  if (upload.error) {
-    return { ok: false, error: `Upload failed: ${upload.error.message}` };
-  }
-
-  const db = await userClient(user.id);
+  // The row goes in first, through the user's own role, so RLS decides whether
+  // they may file anything in that department before a single byte is stored.
+  // `storage_path` is what satisfies the "a file has a source" constraint and
+  // marks this as an upload rather than an external link.
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('files')
     .insert({
       name: v.name,
-      storage_path: key,
+      storage_path: sanitise(file.name),
       mime: file.type || null,
       size: file.size,
       department_id: v.department_id,
@@ -84,14 +77,21 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
     .maybeSingle();
 
   if (error || !data) {
-    // Do not leave an orphaned object behind if the row was refused.
-    await adminClient().storage.from(STORAGE_BUCKET).remove([key]);
     return {
       ok: false,
       error: error?.message.includes('row-level security')
         ? 'You do not have permission to upload to that department.'
         : error?.message ?? 'Upload was rejected.',
     };
+  }
+
+  try {
+    await putBlob(data.id, Buffer.from(await file.arrayBuffer()));
+  } catch (e) {
+    // Never leave a library entry pointing at contents that were not stored.
+    await deleteBlob(data.id);
+    await db.from('files').delete().eq('id', data.id);
+    return { ok: false, error: (e as Error).message };
   }
 
   await audit({
@@ -140,7 +140,7 @@ export async function addExternalLinkAction(formData: FormData): Promise<ActionR
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('files')
     .insert({ ...parsed.data, uploaded_by: user.id })
@@ -175,7 +175,7 @@ export async function deleteFileAction(id: string): Promise<ActionResult> {
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   // Soft delete only — the object stays in storage so a mistaken delete is
   // recoverable from the recycle bin.
   const { data, error } = await db

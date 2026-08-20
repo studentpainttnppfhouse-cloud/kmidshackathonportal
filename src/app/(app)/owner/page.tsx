@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { adminClient } from '@/lib/supabase/admin';
-import { getDepartments } from '@/lib/db';
+import { admin } from '@/lib/db/client';
+import { getDepartments } from '@/lib/db/reads';
 import { canManageUsers } from '@/lib/permissions';
 import { OwnerConsole } from '@/features/owner/owner-console';
 import type { OwnerUser } from '@/features/owner/users-table';
@@ -18,7 +18,7 @@ export default async function OwnerPage() {
   // the console, but every action inside it refuses while impersonating.
   if (!canManageUsers(user.tier)) redirect('/dashboard');
 
-  const db = adminClient();
+  const db = admin();
 
   const [usersRes, invitesRes, keysRes, auditRes, frozenRes, departments] = await Promise.all([
     db

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { adminClient } from '@/lib/supabase/admin';
+import { admin } from '@/lib/db/client';
 import { getSessionUser } from '@/lib/auth/session';
 import type { FormField, FormSettings } from '@/lib/forms';
 import { PublicForm } from '@/features/forms/public-form';
@@ -17,7 +17,7 @@ export default async function PublicFormPage({
 }) {
   const { slug } = await params;
 
-  const { data } = await adminClient()
+  const { data } = await admin()
     .from('forms')
     .select('id, title, description, schema, settings, status, opens_at, closes_at')
     .eq('public_slug', slug)

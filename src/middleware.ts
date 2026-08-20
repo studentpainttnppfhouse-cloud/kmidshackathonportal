@@ -3,8 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 /**
  * Cheap routing gate.
  *
- * Middleware runs on the edge runtime, where the Node crypto and Supabase
- * calls needed to resolve a session token are not available. So this layer
+ * Middleware runs on the edge runtime, where neither the Node crypto nor the
+ * database calls needed to resolve a session token exist. So this layer
  * only answers "is there a device cookie at all" and bounces anonymous
  * requests to the sign-in screen.
  *

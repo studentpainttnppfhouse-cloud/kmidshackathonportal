@@ -3,8 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { getDepartments } from '@/lib/db';
+import { asUser } from '@/lib/db/client';
+import { getDepartments } from '@/lib/db/reads';
 import { canManageUsers, canWriteDepartment } from '@/lib/permissions';
 import type { FormField, FormSettings } from '@/lib/forms';
 import { FormDetail } from '@/features/forms/form-detail';
@@ -17,7 +17,7 @@ export default async function FormPage({ params }: { params: Promise<{ id: strin
   if (!user) redirect('/signin');
 
   const { id } = await params;
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
 
   const { data } = await db
     .from('forms')

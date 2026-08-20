@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { asUser } from '@/lib/db/client';
 import { audit } from '@/lib/audit';
 import { atLeast } from '@/lib/permissions';
 
@@ -19,7 +19,7 @@ export async function checkInAction(day: string, direction: 'in' | 'out'): Promi
   const parsed = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).safeParse(day);
   if (!parsed.success) return { ok: false, error: 'Unknown day' };
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const now = new Date().toISOString();
 
   // Checking in has to clear any previous check-out, otherwise someone who
@@ -74,7 +74,7 @@ export async function fileIncidentAction(formData: FormData): Promise<ActionResu
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('incidents')
     .insert({
@@ -116,7 +116,7 @@ export async function resolveIncidentAction(
   const parsed = z.string().trim().min(1).max(2000).safeParse(resolution);
   if (!parsed.success) return { ok: false, error: 'Describe how it was resolved.' };
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('incidents')
     .update({ resolution: parsed.data, resolved_at: new Date().toISOString() })
@@ -157,7 +157,7 @@ export async function deployReserveAction(formData: FormData): Promise<ActionRes
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { error } = await db.from('reserve_deployments').insert({
     user_id: parsed.data.userId,
     day: parsed.data.day,

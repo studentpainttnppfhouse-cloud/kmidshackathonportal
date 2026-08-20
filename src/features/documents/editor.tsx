@@ -17,6 +17,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import { prosemirrorJSONToYXmlFragment } from 'y-prosemirror';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered,
   ListChecks, Table as TableIcon, Link2, Code, Quote, Minus, Undo2, Redo2,
@@ -24,8 +25,8 @@ import {
 } from 'lucide-react';
 import { cursorColorFor } from '@/lib/collab/provider';
 import {
-  collabAvailable, useCollab,
-  type CollabPeer, type CollabStatus, type SupabaseConfig,
+  useCollab,
+  type CollabPeer, type CollabStatus,
 } from '@/lib/collab/use-collab';
 import { saveDocumentAction } from './actions';
 
@@ -39,17 +40,17 @@ export function DocumentEditor({
   initialTitle,
   editable,
   me,
-  supabase,
 }: {
   documentId: string;
   initialContent: object;
   initialTitle: string;
   editable: boolean;
   me: { name: string; email: string };
-  supabase: SupabaseConfig;
 }) {
-  const collabEnabled = collabAvailable(supabase);
-  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled, supabase);
+  // Only an editable document joins a channel. Someone reading a published
+  // run-of-show has nothing to merge, and holding a stream open for them would
+  // cost a connection for the whole time the tab is left on screen.
+  const { status, isFirst, peers, provider } = useCollab(documentId, me, editable);
   const [title, setTitle] = useState(initialTitle);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export function DocumentEditor({
   // The editor cannot be built until we know whether a Yjs document is joining
   // it — Collaboration replaces the built-in history, and swapping extensions
   // afterwards would remount and lose the caret.
-  const collabSettled = !collabEnabled || status !== 'connecting';
+  const collabSettled = !editable || status !== 'connecting';
 
   const editor = useEditor({
     editable,
@@ -152,18 +153,33 @@ export function DocumentEditor({
     };
   }, []);
 
-  // Seed the shared Yjs document from what is stored, but only when this
-  // client joined first. A later joiner receives the state from a peer, and
-  // seeding again would insert the stored copy a second time.
+  /**
+   * Seed the shared document from what is stored, but only when this client
+   * joined first — a later joiner is handed the state by a peer, and seeding
+   * again would insert the stored copy a second time.
+   *
+   * The content goes into the Yjs fragment rather than through
+   * `editor.commands.setContent`. Both would put the text on screen, but only
+   * this one puts it in the shared document: an editor-level insert is a local
+   * change that the sync plugin is entitled to replace with whatever the Yjs
+   * document says, which is nothing at all on a fresh join.
+   */
   const seeded = useRef(false);
   useEffect(() => {
     if (!editor || !provider || seeded.current) return;
-    if (isFirst !== true) {
-      seeded.current = true;
-      return;
-    }
-    if (editor.isEmpty) {
-      editor.commands.setContent(initialContent, false);
+
+    // `null` means the join is still in flight. Treating that as "not first"
+    // would settle the question early and leave the document empty, because
+    // the answer only arrives on a later render and this runs once.
+    if (isFirst === null) return;
+
+    if (isFirst) {
+      // 'default' is the fragment name Collaboration uses unless told
+      // otherwise. Anything already in it came from a peer.
+      const fragment = provider.doc.getXmlFragment('default');
+      if (fragment.length === 0) {
+        prosemirrorJSONToYXmlFragment(editor.schema, initialContent, fragment);
+      }
     }
     seeded.current = true;
   }, [editor, provider, isFirst, initialContent]);
@@ -197,7 +213,7 @@ export function DocumentEditor({
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface-2 px-5 py-2.5 text-[12px] font-semibold">
         <SaveIndicator state={saveState} />
-        <CollabIndicator status={status} peers={peers} enabled={collabEnabled} />
+        <CollabIndicator status={status} peers={peers} enabled={editable} />
         {error ? <span className="text-danger">{error}</span> : null}
         <span className="ml-auto text-muted-2">
           {editor.storage.characterCount?.words?.() ?? editor.getText().split(/\s+/).filter(Boolean).length}{' '}

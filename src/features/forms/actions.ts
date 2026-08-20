@@ -3,9 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
-import { anonClient } from '@/lib/supabase/user';
+import { admin, asUser } from '@/lib/db/client';
+import { asAnon } from '@/lib/db/client';
 import { audit } from '@/lib/audit';
 import { assertCanMutate, canManageUsers } from '@/lib/permissions';
 import { FIELD_TYPES, answerToText, validateAnswers, type FormField } from '@/lib/forms';
@@ -63,7 +62,7 @@ export async function createFormAction(
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('forms')
     .insert({
@@ -113,7 +112,7 @@ export async function saveFormAction(id: string, payload: unknown): Promise<Acti
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('forms')
     .update({
@@ -145,7 +144,7 @@ export async function setFormStatusAction(
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const patch: Record<string, unknown> = { status };
 
   // Publishing mints the shareable slug if it does not have one yet.
@@ -197,7 +196,7 @@ export async function submitResponseAction(
 ): Promise<ActionResult> {
   const user = await getSessionUser();
 
-  const { data: form } = await adminClient()
+  const { data: form } = await admin()
     .from('forms')
     .select('id, title, schema, settings, status, opens_at, closes_at, department_id')
     .eq('id', formId)
@@ -235,7 +234,7 @@ export async function submitResponseAction(
   }
 
   if (row.settings?.oneResponsePerUser && user) {
-    const { count } = await adminClient()
+    const { count } = await admin()
       .from('form_responses')
       .select('id', { count: 'exact', head: true })
       .eq('form_id', formId)
@@ -246,7 +245,7 @@ export async function submitResponseAction(
     }
   }
 
-  const db = user ? await userClient(user.id) : anonClient();
+  const db = user ? asUser(user.id) : asAnon();
   const { data, error } = await db
     .from('form_responses')
     .insert({
@@ -312,7 +311,7 @@ export async function promoteRespondentAction(formData: FormData): Promise<Actio
   }
 
   const v = parsed.data;
-  const db = adminClient();
+  const db = admin();
 
   const { error: inviteError } = await db.from('invited_users').upsert(
     {
@@ -379,7 +378,7 @@ export async function responsesToSheetAction(formId: string): Promise<ActionResu
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data: form } = await db
     .from('forms')
     .select('id, title, schema, department_id')

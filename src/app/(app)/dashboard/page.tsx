@@ -3,9 +3,9 @@ import { redirect } from 'next/navigation';
 import {
   daysToEvent, getAnnouncements, getAssignments, getDepartments,
   isOverdue, summariseByDepartment,
-} from '@/lib/db';
+} from '@/lib/db/reads';
 import { atLeast } from '@/lib/permissions';
-import { adminClient } from '@/lib/supabase/admin';
+import { admin } from '@/lib/db/client';
 import { relativeTime } from '@/lib/format';
 import { CountdownHero } from '@/features/dashboard/countdown-hero';
 import { TaskList } from '@/features/dashboard/task-list';
@@ -202,7 +202,7 @@ function AdminDashboard({
  * admin client, showing what changed but not who changed it.
  */
 async function recentActivity(realTier: string): Promise<ActivityEntry[]> {
-  const { data } = await adminClient()
+  const { data } = await admin()
     .from('audit_log')
     .select('id, action, target_label, actor_email, created_at')
     .order('created_at', { ascending: false })
@@ -272,7 +272,7 @@ function describeAction(action: string): string {
 }
 
 async function activeStaffCount(): Promise<number> {
-  const { count } = await adminClient()
+  const { count } = await admin()
     .from('users')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'active')

@@ -1,27 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { envProblems } from '@/lib/env';
 
+/** Every name the environment contract reads, under any of its spellings. */
 const KEYS = [
-  'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'SUPABASE_JWT_SECRET',
+  'DATABASE_URL',
   'OWNER_EMAIL',
   'OWNER_BACKUP_EMAIL',
   'SCHOOL_EMAIL_DOMAIN',
-  // The names a Vercel Marketplace Supabase project arrives under.
-  'SUPABASE_URL',
-  'SUPABASE_ANON_KEY',
-  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
-  'SUPABASE_PUBLISHABLE_KEY',
-  'SUPABASE_SECRET_KEY',
+  // The other names a connection URI is accepted under.
+  'POSTGRES_URL',
+  'POSTGRESQL_URL',
+  'RDS_DATABASE_URL',
+  'PG_CONNECTION_STRING',
 ] as const;
 
+const URI = 'postgresql://portal:secret@db.example.com:5432/hackathon';
+
 const COMPLETE: Record<string, string> = {
-  NEXT_PUBLIC_SUPABASE_URL: 'https://demo.supabase.co',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
-  SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
-  SUPABASE_JWT_SECRET: 'a-secret-of-at-least-32-characters-long',
+  DATABASE_URL: URI,
   OWNER_EMAIL: 'owner@kmids.ac.th',
   OWNER_BACKUP_EMAIL: 'backup@kmids.ac.th',
   SCHOOL_EMAIL_DOMAIN: 'kmids.ac.th',
@@ -42,106 +38,73 @@ beforeEach(() => {
 afterEach(() => {
   for (const k of KEYS) {
     if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
+    else process.env[k] = saved[k] as string;
   }
 });
 
-function keys() {
-  return envProblems().map((p) => p.key);
-}
-
 describe('envProblems', () => {
-  it('reports nothing when the environment is complete', () => {
+  it('reports nothing when everything is set', () => {
     expect(envProblems()).toEqual([]);
   });
 
-  it('names every variable that is missing, so a bad deploy is self-explaining', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    delete process.env.OWNER_EMAIL;
-
-    expect(keys()).toEqual([
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'SUPABASE_SERVICE_ROLE_KEY',
-      'OWNER_EMAIL',
-    ]);
-  });
-
-  it('says "not set" for an absent variable and why for a malformed one', () => {
-    delete process.env.OWNER_EMAIL;
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'demo.supabase.co'; // no scheme
+  it('names a missing variable rather than throwing', () => {
+    delete process.env.DATABASE_URL;
 
     const problems = envProblems();
-    expect(problems.find((p) => p.key === 'OWNER_EMAIL')?.reason).toBe('not set');
-    expect(problems.find((p) => p.key === 'NEXT_PUBLIC_SUPABASE_URL')?.reason).not.toBe('not set');
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.key).toBe('DATABASE_URL');
+    expect(problems[0]?.reason).toBe('not set');
   });
 
-  it('catches a JWT secret that is present but too short to sign with', () => {
-    process.env.SUPABASE_JWT_SECRET = 'short';
-    expect(keys()).toEqual(['SUPABASE_JWT_SECRET']);
+  it('tells the reader what else the value is accepted as', () => {
+    delete process.env.DATABASE_URL;
+    expect(envProblems()[0]?.alsoAccepts).toContain('POSTGRES_URL');
   });
 
-  it('lists each variable once, however many rules it breaks', () => {
-    process.env.OWNER_EMAIL = 'not-an-email';
-    expect(keys().filter((k) => k === 'OWNER_EMAIL')).toHaveLength(1);
+  it('says where to find the value', () => {
+    delete process.env.DATABASE_URL;
+    expect(envProblems()[0]?.source).toMatch(/Render|postgresql:\/\//);
   });
 
-  it('treats the two optional variables as optional', () => {
-    delete process.env.OWNER_BACKUP_EMAIL;
+  it('accepts a URI that arrived under another name', () => {
+    delete process.env.DATABASE_URL;
+    process.env.POSTGRES_URL = URI;
+    expect(envProblems()).toEqual([]);
+  });
+
+  it('prefers DATABASE_URL over the aliases', () => {
+    process.env.POSTGRES_URL = 'postgresql://other@elsewhere:5432/other';
+    expect(envProblems()).toEqual([]);
+  });
+
+  it('treats an empty string as absent', () => {
+    process.env.DATABASE_URL = '';
+    expect(envProblems().map((p) => p.key)).toEqual(['DATABASE_URL']);
+  });
+
+  it('rejects a connection string that is not a postgres URI', () => {
+    process.env.DATABASE_URL = 'https://example.com/db';
+    expect(envProblems()[0]?.reason).toMatch(/postgresql/);
+  });
+
+  it('rejects an owner address that is not an email', () => {
+    process.env.OWNER_EMAIL = 'not-an-address';
+    expect(envProblems().map((p) => p.key)).toEqual(['OWNER_EMAIL']);
+  });
+
+  it('allows the backup owner to be left empty', () => {
+    process.env.OWNER_BACKUP_EMAIL = '';
+    expect(envProblems()).toEqual([]);
+  });
+
+  it('defaults the school domain', () => {
     delete process.env.SCHOOL_EMAIL_DOMAIN;
     expect(envProblems()).toEqual([]);
   });
 
-  it('points at where each value comes from', () => {
-    delete process.env.SUPABASE_JWT_SECRET;
-    expect(envProblems()[0]?.source).toContain('JWT Secret');
-  });
-});
-
-describe('Vercel Marketplace variable names', () => {
-  it('accepts the unprefixed names the integration injects', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    process.env.SUPABASE_URL = 'https://demo.supabase.co';
-    process.env.SUPABASE_ANON_KEY = 'anon-key';
-    process.env.SUPABASE_SECRET_KEY = 'secret-key';
-
-    expect(envProblems()).toEqual([]);
-  });
-
-  it('accepts the newer publishable/secret key vocabulary', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_abc';
-    process.env.SUPABASE_SECRET_KEY = 'sb_secret_abc';
-
-    expect(envProblems()).toEqual([]);
-  });
-
-  it('prefers the canonical name when both are set', async () => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://canonical.supabase.co';
-    process.env.SUPABASE_URL = 'https://alias.supabase.co';
-
-    const { publicSupabaseConfig } = await import('@/lib/env');
-    expect(publicSupabaseConfig().url).toBe('https://canonical.supabase.co');
-  });
-
-  it('ignores an alias set to the empty string', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    process.env.SUPABASE_URL = '';
-
-    expect(envProblems().map((p) => p.key)).toEqual(['NEXT_PUBLIC_SUPABASE_URL']);
-  });
-
-  it('tells the setup screen which other names it would have accepted', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    expect(envProblems()[0]?.alsoAccepts).toEqual(['SUPABASE_URL']);
-  });
-
-  it('offers no alias for the JWT secret, which must be copied by hand', () => {
-    delete process.env.SUPABASE_JWT_SECRET;
-    expect(envProblems()[0]?.alsoAccepts).toEqual([]);
-    expect(envProblems()[0]?.source).toContain('by hand');
+  it('reports every missing variable at once, not just the first', () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.OWNER_EMAIL;
+    expect(envProblems().map((p) => p.key).sort()).toEqual(['DATABASE_URL', 'OWNER_EMAIL']);
   });
 });

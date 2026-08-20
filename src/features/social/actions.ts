@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { asUser } from '@/lib/db/client';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
 import { CONTENT_STATUSES } from '@/lib/types';
@@ -53,7 +53,7 @@ export async function saveContentItemAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const payload = {
     ...parsed.data,
     format: parsed.data.format || null,
@@ -99,7 +99,7 @@ export async function deleteContentItemAction(id: string): Promise<ActionResult>
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data, error } = await db
     .from('content_items')
     .update({ deleted_at: new Date().toISOString() })
@@ -146,7 +146,7 @@ export async function saveSocialAccountAction(formData: FormData): Promise<Actio
   }
 
   const id = formData.get('id') as string | null;
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const payload = {
     ...parsed.data,
     url: parsed.data.url || null,

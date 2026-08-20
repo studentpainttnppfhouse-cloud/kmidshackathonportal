@@ -1,6 +1,6 @@
 import 'server-only';
 import { headers } from 'next/headers';
-import { adminClient } from '@/lib/supabase/admin';
+import { admin } from '@/lib/db/client';
 import { clientIp } from '@/lib/auth/session';
 
 /**
@@ -80,7 +80,7 @@ export interface AuditEntry {
 export async function audit(entry: AuditEntry): Promise<void> {
   try {
     const hdrs = await headers();
-    await adminClient()
+    await admin()
       .from('audit_log')
       .insert({
         actor_id: entry.actorId ?? null,

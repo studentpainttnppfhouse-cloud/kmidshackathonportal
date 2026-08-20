@@ -1,5 +1,5 @@
 import 'server-only';
-import { adminClient } from '@/lib/supabase/admin';
+import { admin } from '@/lib/db/client';
 import { audit } from '@/lib/audit';
 import { ownerEmails, schoolDomain } from '@/lib/env';
 import type { AccountStatus, AppUser, Tier } from '@/lib/types';
@@ -48,7 +48,7 @@ export async function signInWithEmail(
     return { kind: 'refused', reason: 'That does not look like an email address.' };
   }
 
-  const db = adminClient();
+  const db = admin();
 
   // Returning user — the common path.
   const { data: existing } = await db
@@ -201,7 +201,7 @@ interface CreateUserInput {
 }
 
 async function createUser(input: CreateUserInput): Promise<AppUser> {
-  const { data, error } = await adminClient()
+  const { data, error } = await admin()
     .from('users')
     .insert({
       email: input.email,
@@ -213,7 +213,9 @@ async function createUser(input: CreateUserInput): Promise<AppUser> {
     .select('*')
     .single<AppUser>();
 
-  if (error) throw new Error(`Could not create account: ${error.message}`);
+  if (error || !data) {
+    throw new Error(`Could not create account: ${error?.message ?? 'no row returned'}`);
+  }
   return data;
 }
 
@@ -225,7 +227,7 @@ interface PendingInvite {
 }
 
 async function findPendingInvite(email: string): Promise<PendingInvite | null> {
-  const { data } = await adminClient()
+  const { data } = await admin()
     .from('invited_users')
     .select('id, tier, department_id, role_title, expires_at')
     .eq('email', email)
@@ -245,7 +247,7 @@ async function applyPendingInvite(user: AppUser, email: string): Promise<AppUser
   const invite = await findPendingInvite(email);
   if (!invite) return user;
 
-  const db = adminClient();
+  const db = admin();
   const { data } = await db
     .from('users')
     .update({
@@ -279,7 +281,7 @@ interface InviteKeyRow {
 }
 
 async function redeemInviteKey(code: string): Promise<InviteKeyRow | 'invalid'> {
-  const db = adminClient();
+  const db = admin();
   const { data } = await db
     .from('invite_keys')
     .select('*')
