@@ -7,6 +7,18 @@ import { createSupabaseTransport } from './supabase-transport';
 
 export type CollabStatus = 'connecting' | 'live' | 'solo';
 
+/**
+ * The project's public URL and key, resolved on the server and passed down.
+ * Not read from `process.env` here: Next only inlines literal `NEXT_PUBLIC_*`
+ * reads into the client bundle, so a project provisioned through the Vercel
+ * Marketplace — which may only set `SUPABASE_URL` — would leave this file
+ * pointing at an empty string.
+ */
+export interface SupabaseConfig {
+  url: string;
+  anonKey: string;
+}
+
 export interface CollabPeer {
   clientId: number;
   name: string;
@@ -26,6 +38,7 @@ export function useCollab(
   documentId: string,
   user: { name: string; email: string },
   enabled: boolean,
+  config: SupabaseConfig,
 ) {
   const [status, setStatus] = useState<CollabStatus>(enabled ? 'connecting' : 'solo');
   const [isFirst, setIsFirst] = useState<boolean | null>(enabled ? null : true);
@@ -42,11 +55,9 @@ export function useCollab(
 
     let cancelled = false;
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
-      { auth: { persistSession: false } },
-    );
+    const supabase = createClient(config.url, config.anonKey, {
+      auth: { persistSession: false },
+    });
 
     const instance = new CollabProvider(
       createSupabaseTransport(supabase, documentId),
@@ -79,7 +90,7 @@ export function useCollab(
       instance.destroy();
       providerRef.current = null;
     };
-  }, [documentId, enabled, user.name, user.email]);
+  }, [documentId, enabled, user.name, user.email, config.url, config.anonKey]);
 
   return { status, isFirst, peers, provider };
 }
@@ -91,8 +102,7 @@ export function useCollab(
  * every document waiting out the join timeout before falling back. Skipping
  * the attempt keeps local development snappy.
  */
-export function collabAvailable(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  if (!url) return false;
-  return !/localhost|127\.0\.0\.1/.test(url);
+export function collabAvailable(config: SupabaseConfig): boolean {
+  if (!config.url || !config.anonKey) return false;
+  return !/localhost|127\.0\.0\.1/.test(config.url);
 }

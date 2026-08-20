@@ -23,7 +23,10 @@ import {
   Heading1, Heading2, Heading3, Highlighter, Check, CloudOff, Loader2, Users, Wifi,
 } from 'lucide-react';
 import { cursorColorFor } from '@/lib/collab/provider';
-import { collabAvailable, useCollab, type CollabPeer, type CollabStatus } from '@/lib/collab/use-collab';
+import {
+  collabAvailable, useCollab,
+  type CollabPeer, type CollabStatus, type SupabaseConfig,
+} from '@/lib/collab/use-collab';
 import { saveDocumentAction } from './actions';
 
 type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
@@ -36,15 +39,17 @@ export function DocumentEditor({
   initialTitle,
   editable,
   me,
+  supabase,
 }: {
   documentId: string;
   initialContent: object;
   initialTitle: string;
   editable: boolean;
   me: { name: string; email: string };
+  supabase: SupabaseConfig;
 }) {
-  const collabEnabled = collabAvailable();
-  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled);
+  const collabEnabled = collabAvailable(supabase);
+  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled, supabase);
   const [title, setTitle] = useState(initialTitle);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<string | null>(null);

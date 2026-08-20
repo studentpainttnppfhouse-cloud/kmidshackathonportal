@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/supabase/user';
+import { publicSupabaseConfig } from '@/lib/env';
 import { canApprove, canEditOwned, isReadOnly } from '@/lib/permissions';
 import type { DocStatus } from '@/lib/types';
 import { DocumentEditor } from '@/features/documents/editor';
@@ -87,6 +88,7 @@ export default async function DocumentPage({
           initialTitle={row.title}
           editable={editable}
           me={{ name: user.nickname ?? user.name ?? user.email, email: user.email }}
+          supabase={publicSupabaseConfig()}
         />
 
         <div className="flex flex-col gap-5">
