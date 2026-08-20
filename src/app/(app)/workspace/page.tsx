@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { getAnnouncements, getAssignments, getDepartments, getDirectory } from '@/lib/db';
+import { asUser } from '@/lib/db/client';
+import { getAnnouncements, getAssignments, getDepartments, getDirectory } from '@/lib/db/reads';
 import { canPublishAnnouncement } from '@/lib/permissions';
 import {
   WorkspaceClient, type WorkspaceDoc, type WorkspaceFile,
@@ -28,7 +28,7 @@ export default async function WorkspacePage({
     ? departments.find((d) => d.slug === params.dept) ?? null
     : departments.find((d) => d.id === user.department_id) ?? null;
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
 
   const [assignments, announcements, directory, docsRes, filesRes] = await Promise.all([
     getAssignments(user, { departmentId: active?.id ?? null }),

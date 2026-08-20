@@ -3,8 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser, revokeAllSessions } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
+import { admin, asUser } from '@/lib/db/client';
 import { audit } from '@/lib/audit';
 import { SHIRT_SIZES } from '@/lib/types';
 
@@ -38,7 +37,7 @@ export async function updateProfileAction(formData: FormData): Promise<ActionRes
   }
 
   const v = parsed.data;
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { error } = await db
     .from('users')
     .update({
@@ -91,7 +90,7 @@ export async function revokeDeviceAction(sessionId: string): Promise<ActionResul
   if (!parsed.success) return { ok: false, error: 'Unknown device' };
 
   // Scoped to this user's own sessions, so nobody can revoke someone else's.
-  const { error } = await adminClient()
+  const { error } = await admin()
     .from('device_sessions')
     .update({ revoked_at: new Date().toISOString() })
     .eq('id', parsed.data)

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { getDepartments, getDirectory } from '@/lib/db';
+import { getDepartments, getDirectory } from '@/lib/db/reads';
 import { PeopleClient } from '@/features/people/people-client';
 
 export const dynamic = 'force-dynamic';

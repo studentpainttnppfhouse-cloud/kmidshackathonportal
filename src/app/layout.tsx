@@ -16,9 +16,9 @@ export const viewport: Viewport = {
 };
 
 /**
- * A deployment with no Supabase credentials cannot render a single app route:
- * every one of them resolves the session first, and that needs the service-role
- * key. Left alone it surfaces as Next's opaque "a server-side exception has
+ * A deployment with no database connection cannot render a single app route:
+ * every one of them resolves the session first, and that needs a database.
+ * Left alone it surfaces as Next's opaque "a server-side exception has
  * occurred" digest, which tells whoever just deployed nothing at all. So the
  * check happens here, once, above every route, and names what is missing.
  */

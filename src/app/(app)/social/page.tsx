@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { getDepartments, getDirectory } from '@/lib/db';
+import { asUser } from '@/lib/db/client';
+import { getDepartments, getDirectory } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import {
   SocialClient, type ContentItem, type SocialAccount,
@@ -13,7 +13,7 @@ export default async function SocialPage() {
   const user = await getSessionUser();
   if (!user) redirect('/signin');
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const [departments, directory, itemsRes, accountsRes] = await Promise.all([
     getDepartments(user),
     getDirectory(user),

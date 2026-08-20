@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { getAssignments, getDepartments, getDirectory, isOverdue } from '@/lib/db';
+import { asUser } from '@/lib/db/client';
+import { getAssignments, getDepartments, getDirectory, isOverdue } from '@/lib/db/reads';
 import { canApprove, canCreateAssignment, isReadOnly } from '@/lib/permissions';
 import { AssignmentsClient } from '@/features/assignments/assignments-client';
 import type { DrawerComment } from '@/features/assignments/task-drawer';
@@ -51,7 +51,7 @@ async function loadComments(
 ): Promise<Record<string, DrawerComment[]>> {
   if (ids.length === 0) return {};
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data } = await db
     .from('comments')
     .select('id, parent_id, body, created_at, users:user_id ( nickname, name )')

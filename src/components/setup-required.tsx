@@ -10,7 +10,8 @@ import type { EnvProblem } from '@/lib/env';
  * problem list alone.
  */
 export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
-  const onVercel = Boolean(process.env.VERCEL);
+  // Render sets RENDER=true in every service it runs.
+  const onRender = Boolean(process.env.RENDER);
 
   return (
     <div
@@ -30,7 +31,7 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
 
         <h1 className="text-[21px] font-extrabold tracking-[-0.02em]">Finish setting up</h1>
         <p className="mb-6 mt-2 text-muted-2">
-          Hackathon Studio is deployed, but it has no Supabase project to talk to yet. Set the{' '}
+          Hackathon Studio is deployed, but it has no database to talk to yet. Set the{' '}
           {problems.length === 1 ? 'variable' : `${problems.length} variables`} below, then
           redeploy.
         </p>
@@ -61,23 +62,28 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
 
         <div className="rounded-xl border border-line bg-surface-2 px-4 py-3.5">
           <h2 className="mb-1.5 text-[13px] font-bold">
-            {onVercel ? 'On Vercel' : 'Running locally'}
+            {onRender ? 'On Render' : 'Running locally'}
           </h2>
-          {onVercel ? (
+          {onRender ? (
             <ol className="list-decimal space-y-1 pl-4 text-[12.5px] text-muted-2">
               <li>
-                Easiest path: Project → <strong>Storage</strong> → add <strong>Supabase</strong>{' '}
-                from the Marketplace. It provisions the project and sets most of these for you.
+                Service → <strong>Environment</strong> → add the{' '}
+                {problems.length === 1 ? 'variable' : 'variables'} above.{' '}
+                <code className="font-mono">DATABASE_URL</code> is the whole connection URI,
+                password included and URL-encoded.
               </li>
               <li>
-                Then fill any gap by hand under Settings → Environment Variables, for Production,
-                Preview, and Development. <code className="font-mono">SUPABASE_JWT_SECRET</code> and
-                the <code className="font-mono">OWNER_</code> addresses are not provisioned for you.
+                Make sure the database accepts connections from this service. On RDS that means
+                the instance is publicly accessible and its security group allows inbound TCP
+                5432 from Render’s outbound addresses.
               </li>
               <li>
-                Deployments → ⋯ → <strong>Redeploy</strong>. The{' '}
-                <code className="font-mono">NEXT_PUBLIC_</code> values are baked into the build, so
-                saving them alone does not fix a deployment that already exists.
+                <strong>Manual Deploy</strong> → <strong>Deploy latest commit</strong>. Saving a
+                variable alone does not restart a service that is already running.
+              </li>
+              <li>
+                Then open <code className="font-mono">/api/health/db</code>, which says whether
+                the connection works and whether the schema has been applied.
               </li>
             </ol>
           ) : (
@@ -87,8 +93,8 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
                 <code className="font-mono">.env.local</code> and fill it in.
               </li>
               <li>
-                Run <code className="font-mono">npm run db:setup</code> to create the schema and the
-                Owner accounts.
+                Run <code className="font-mono">npm run db:setup</code> to create the schema and
+                the Owner accounts.
               </li>
               <li>Restart the dev server.</li>
             </ol>

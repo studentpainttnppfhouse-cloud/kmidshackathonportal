@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { asUser } from '@/lib/db/client';
 import { canEditOwned, isReadOnly } from '@/lib/permissions';
 import { emptySheet, type SheetData } from '@/lib/sheet';
 import { SheetGrid } from '@/features/spreadsheets/grid';
@@ -19,7 +19,7 @@ export default async function SpreadsheetPage({
   if (!user) redirect('/signin');
 
   const { id } = await params;
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
 
   const { data } = await db
     .from('spreadsheets')

@@ -43,12 +43,15 @@ create type app.incident_severity as enum ('low', 'medium', 'high', 'critical');
 -- ---------------------------------------------------------------------------
 -- Identity helpers
 --
--- Sign-in is email-only (no password, no OAuth) — see src/lib/auth. The
--- Next.js server mints a short-lived HS256 JWT signed with the project's
--- SUPABASE_JWT_SECRET, so PostgREST populates `request.jwt.claims` exactly as
--- it would for a Supabase Auth session, and every policy below still applies.
--- A stolen or forged claim cannot widen access: tier and status are read from
--- the `users` table on every call, never trusted from the token.
+-- Sign-in is email-only (no password, no OAuth) — see src/lib/auth. Once the
+-- server knows who is asking, it opens a transaction, writes the user id into
+-- `request.jwt.claims` and switches to the `authenticated` role, so every
+-- policy below reads the caller through app.uid(). Both settings are
+-- transaction-local, so a pooled connection never carries a user into the next
+-- request. See asUser() in src/lib/db/client.ts.
+--
+-- Nothing about a request can widen access on its own: tier and status are
+-- read from the `users` table on every call, never taken from the claim.
 -- ---------------------------------------------------------------------------
 
 create or replace function app.uid() returns uuid

@@ -1,5 +1,5 @@
 import 'server-only';
-import { userClient } from '@/lib/supabase/user';
+import { asUser } from '@/lib/db/client';
 import type { AssignmentStatus, Department, Priority, SessionUser } from '@/lib/types';
 import type {
   AnnouncementRow, AssignmentRow, DirectoryUser,
@@ -21,7 +21,7 @@ export { daysToEvent, isOverdue, summariseByDepartment, todayIso } from '@/lib/r
  */
 
 export async function getDepartments(user: SessionUser): Promise<Department[]> {
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data } = await db
     .from('departments')
     .select('id, name, slug, description, head_user_id, color, sort_order')
@@ -79,7 +79,7 @@ export async function getAssignments(
   user: SessionUser,
   opts: { departmentId?: string | null; mineOnly?: boolean; limit?: number } = {},
 ): Promise<AssignmentRow[]> {
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   let query = db
     .from('assignments')
     .select(ASSIGNMENT_SELECT)
@@ -104,7 +104,7 @@ export async function getAnnouncements(
   user: SessionUser,
   limit = 20,
 ): Promise<AnnouncementRow[]> {
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data } = await db
     .from('announcements')
     .select('id, title, body, scope, department_id, pinned, created_at, users:author_id ( nickname, name )')
@@ -128,7 +128,7 @@ export async function getAnnouncements(
 }
 
 export async function getDirectory(user: SessionUser): Promise<DirectoryUser[]> {
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const { data } = await db
     .from('users')
     .select(

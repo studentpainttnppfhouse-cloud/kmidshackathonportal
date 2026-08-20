@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
-import { getDepartments } from '@/lib/db';
+import { asUser } from '@/lib/db/client';
+import { getDepartments } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import { FilesTabs } from '@/features/files/files-tabs';
 import { FilesClient, type LibraryFile } from '@/features/files/files-client';
 import { BrandKit } from '@/features/files/brand-kit';
-import { STORAGE_BUCKET } from '@/features/files/constants';
+import { downloadPath } from '@/lib/files/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +14,7 @@ export default async function FilesPage() {
   const user = await getSessionUser();
   if (!user) redirect('/signin');
 
-  const db = await userClient(user.id);
+  const db = asUser(user.id);
   const [departments, res] = await Promise.all([
     getDepartments(user),
     db
@@ -26,16 +25,15 @@ export default async function FilesPage() {
       .limit(300),
   ]);
 
-  const storage = adminClient().storage.from(STORAGE_BUCKET);
-
+  // An uploaded file is served by the app itself, so that the department rules
+  // apply to the bytes and not only to this listing. An external link is left
+  // exactly as it was given.
   const files: LibraryFile[] = (
     (res.data ?? []) as unknown as Omit<LibraryFile, 'publicUrl'>[]
   ).map((f) => ({
     ...f,
     tags: f.tags ?? [],
-    publicUrl: f.storage_path
-      ? storage.getPublicUrl(f.storage_path).data.publicUrl
-      : f.external_url,
+    publicUrl: f.storage_path ? downloadPath(f.id) : f.external_url,
   }));
 
   return (

@@ -1,0 +1,44 @@
+# Render blueprint for Hackathon Studio.
+#
+# Deploying from this file: New → Blueprint, point Render at this repository,
+# then fill in the three variables marked `sync: false` when it asks. Nothing
+# here provisions a database — the portal connects to the PostgreSQL instance
+# you already have, and DATABASE_URL is what points it there.
+#
+# The equivalent by hand, if you would rather not use a blueprint: New → Web
+# Service, runtime Node, build `npm ci && npm run build`, start `npm start`,
+# then set the same environment variables under Environment.
+services:
+  - type: web
+    name: hackathon-studio
+    runtime: node
+    plan: starter
+    # `npm ci` rather than `npm install`, so a deploy builds the versions in
+    # package-lock.json and not whatever resolved that morning.
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health/db
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The PostgreSQL connection URI, in full. Set it in the dashboard rather
+      # than here: it carries a password, and this file is in the repository.
+      #   postgresql://user:password@host:5432/dbname
+      # A password with punctuation in it has to be URL-encoded.
+      - key: DATABASE_URL
+        sync: false
+      # The two Owners. Both become T4 on first sign-in, and an Owner listed
+      # here is repaired back to T4 every time they sign in — so losing Owner
+      # access is always fixable by editing this value.
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_BACKUP_EMAIL
+        sync: false
+      # Anyone at this domain may sign in without an invite.
+      - key: SCHOOL_EMAIL_DOMAIN
+        value: kmids.ac.th
+      # Live document editing is fanned out in-process, so a second instance
+      # would put two editors of one document in different rooms. Scale up
+      # rather than out, or see src/lib/collab/hub.ts.
+      - key: WEB_CONCURRENCY
+        value: "1"

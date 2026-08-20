@@ -1,8 +1,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getSessionUser, hashToken, SESSION_COOKIE } from '@/lib/auth/session';
-import { adminClient } from '@/lib/supabase/admin';
-import { getDepartments } from '@/lib/db';
+import { admin } from '@/lib/db/client';
+import { getDepartments } from '@/lib/db/reads';
 import { SettingsClient, type DeviceRow } from '@/features/settings/settings-client';
 
 export const dynamic = 'force-dynamic';
@@ -18,7 +18,7 @@ export default async function SettingsPage() {
 
   const [departments, sessionsRes] = await Promise.all([
     getDepartments(user),
-    adminClient()
+    admin()
       .from('device_sessions')
       .select('id, device_label, user_agent, created_at, last_seen_at, token_hash')
       .eq('user_id', user.id)

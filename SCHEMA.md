@@ -4,7 +4,7 @@ Every table in plain language, plus the rule that decides who can see and
 change each one. Written for whoever maintains this after the 2027 team
 graduates.
 
-The SQL lives in `supabase/migrations/`, in filename order. **Policies are
+The SQL lives in `db/migrations/`, in filename order. **Policies are
 written in the same file as the table they protect** — never bolted on later.
 
 ---
@@ -208,8 +208,25 @@ items.
 
 - **Read:** department access.
 - **Upload:** T1+ in own department or General; T3+ anywhere.
-- **Delete:** the uploader or a department head. Soft only — the storage
-  object is kept so a mistaken delete is recoverable.
+- **Delete:** the uploader or a department head. Soft only — the contents are
+  kept so a mistaken delete is recoverable.
+
+### `file_blobs`
+The contents of an uploaded file, one row per `files.id`, absent for a
+link-only entry. Kept in its own table so listing a folder never drags the
+contents of every file in it across the wire.
+
+Storing bytes in the database is an unusual choice and a deliberate one: the
+portal runs as a single service against a single database, its uploads are
+paperwork and brand assets rather than video, and the 50 MB cap already pushes
+anything larger out to a link. A backup of the database is a complete backup of
+the portal, there is no second set of credentials to rotate, and a file cannot
+go missing from the row describing it.
+
+- **Read:** whoever may read the `files` row. The policy defers to that table
+  rather than restating the department rules, so the two cannot disagree.
+- **Serve:** only through `/api/files/[id]`, which applies the same rules to
+  the bytes and records `file.downloaded` in the audit log.
 
 ---
 
@@ -320,6 +337,10 @@ API returns nothing.
 policies decide the rest. `anon` gets exactly two things: `select` on `forms`
 and `insert` on `form_responses`, for the public submission pages.
 
+The three roles — `anon`, `authenticated`, `service_role` — are created by
+`npm run db:setup`, which also grants them to the connecting user so it can
+`set role` per request.
+
 ---
 
 ## Changing the schema
@@ -327,8 +348,11 @@ and `insert` on `form_responses`, for the public submission pages.
 1. Add a **new** numbered migration; never edit one that has already run.
 2. Write the RLS policies **in the same file** as the table.
 3. Add the table to the export list in `src/app/api/export/route.ts`.
-4. Add an assertion to `tests/sql/rls_test.sql` and run it.
-5. Document the table here.
+4. If anything will embed related rows through it, add its foreign keys to
+   `src/lib/db/relations.ts` — that map is what lets a select list pull a
+   parent or child row inline.
+5. Add an assertion to `tests/sql/rls_test.sql` and run it.
+6. Document the table here.
 
 If a new table has no policy, RLS denies everything by default — which is the
 right way round to fail, but produces a confusing empty screen. Check for

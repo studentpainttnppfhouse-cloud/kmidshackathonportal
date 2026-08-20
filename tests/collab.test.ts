@@ -5,10 +5,10 @@ import {
 } from '@/lib/collab/provider';
 
 /**
- * An in-memory stand-in for the Supabase broadcast channel, so the merge and
+ * An in-memory stand-in for the collaboration channel, so the merge and
  * hand-off logic can be tested without a network. Messages are delivered to
- * every peer except the sender, which is what `broadcast: { self: false }`
- * gives us in production.
+ * every peer except the sender, which is what the hub behind /api/collab does
+ * in production.
  */
 class Hub {
   private peers: Array<{ id: number; handlers: Map<string, (p: Record<string, unknown>) => void> }> = [];
