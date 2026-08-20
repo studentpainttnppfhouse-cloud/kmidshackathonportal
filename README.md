@@ -114,6 +114,149 @@ address restores it — the app repairs the account back to T4 on sign-in.
 
 `.env.local` is gitignored. Never commit real keys.
 
+The Aurora variables are separate and all optional — see *Aurora PostgreSQL on
+AWS* below. Nothing there is needed to run or deploy the portal.
+
+**Alternate names.** A Supabase project added through the Vercel Marketplace
+injects its own variable names, so each value is also read from the names below
+— set either one. `SUPABASE_JWT_SECRET` has no alternate: the integration does
+not reliably provision it, so copy it across by hand.
+
+| Canonical | Also read from |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | `SUPABASE_URL` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PUBLISHABLE_KEY` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `SUPABASE_SECRET_KEY` |
+| `SUPABASE_DB_URL` (setup script only) | `POSTGRES_URL_NON_POOLING`, `POSTGRES_URL`, `DATABASE_URL` |
+
+---
+
+## Aurora PostgreSQL on AWS
+
+The portal runs on Supabase. Aurora is wired up **alongside** it: the
+connection, the schema and a health check exist, and nothing in the app reads
+from it yet. That split is deliberate — it means the AWS side can be set up and
+proved to work on a normal week, rather than during the migration itself.
+
+### What is already done
+
+| Piece | Where |
+| --- | --- |
+| Connection pool, IAM auth, TLS | `src/lib/aws/pool.ts` |
+| Where the settings come from | `src/lib/aws/config.ts` |
+| Health check | `GET /api/health/db` |
+| Schema + roles + demo data | `npm run db:aurora` |
+| AWS's public CA bundle | `certs/rds-global-bundle.pem` |
+
+### There is no database password
+
+Following [Vercel's Aurora guide](https://vercel.com/docs/storage/aurora), the
+deployment authenticates with **RDS IAM auth over Vercel OIDC**:
+
+```
+Vercel deployment  ──OIDC token──▶  AWS STS  ──credentials──▶  IAM role
+                                                                   │
+Aurora  ◀──15-minute signed token──  @aws-sdk/rds-signer  ◀────────┘
+```
+
+Nothing long-lived is stored in the Vercel dashboard, so there is no database
+secret to leak, rotate or hand over at the end of the year. `pg` is given a
+*function* for its password, not a string, so an expired token is replaced on
+the next connection without recycling the pool.
+
+`RDS_PASSWORD` is accepted as a fallback, because a laptop has no OIDC token to
+exchange.
+
+TLS is verified against `certs/rds-global-bundle.pem`, AWS's published trust
+store. The usual shortcut — `rejectUnauthorized: false` — encrypts the
+connection but accepts *any* certificate, so it defends against nothing. The
+bundle is a public list of CAs, not a key; it is the one `*.pem` file
+`.gitignore` deliberately lets through. Re-download it if it ever expires:
+
+```bash
+curl -o certs/rds-global-bundle.pem \
+  https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+```
+
+### Setting it up
+
+**On AWS, once:**
+
+1. Create the Aurora PostgreSQL cluster (Serverless v2 is fine).
+2. Turn on **IAM database authentication** — cluster → Modify → Database
+   authentication. Without it, every IAM token is rejected at the door.
+3. Create the login the app will use, and let it authenticate by token:
+   ```sql
+   create user portal;
+   grant rds_iam to portal;
+   ```
+4. Allow Vercel in: the cluster's security group needs inbound TCP 5432, and
+   the cluster needs to be publicly accessible unless you are routing through a
+   VPC connector.
+
+**On Vercel, once:** install the AWS integration and link it to an IAM role
+whose trust policy accepts Vercel's OIDC issuer for this project. That is what
+provides `AWS_ROLE_ARN`.
+
+**Then, locally:**
+
+```bash
+vercel env pull            # brings down RDS_HOSTNAME, AWS_ROLE_ARN, and the rest
+npm run db:aurora -- --check    # connect and report, change nothing
+npm run db:aurora               # roles + all 9 migrations
+npm run db:aurora -- --seed     # ...and the demo data, if the database is empty
+```
+
+`db:aurora` is resumable: it records what it has applied in `public._migrations`
+and skips those, so re-running it after a failure picks up where it stopped.
+
+Then open **`/api/health/db`** on the deployment. It answers with the server
+version and the round-trip time, or names the variable that is missing and the
+console page that fixes it.
+
+### The three roles Aurora does not have
+
+Every policy in `supabase/migrations` is written `to authenticated`, and
+`0090_grants.sql` grants privileges to `anon`, `authenticated` and
+`service_role`. Supabase creates those three roles for you; a bare Aurora
+cluster has none of them, and the first migration fails on the first policy
+without them. `db:aurora` creates them, and grants all three to your login user
+so the app can switch between them per request.
+
+One thing needs a privileged user: `0010_foundation.sql` creates the `pgcrypto`
+and `pg_trgm` extensions, which on Aurora only `rds_superuser` may do. Run
+`db:aurora` once as the cluster's master user, or have an admin run the two
+`create extension` statements first.
+
+### Permissions survive the move
+
+This is the part that mattered most, and it works. PostgREST authorises a
+request by switching to the `authenticated` role and putting the JWT claims in
+`request.jwt.claims`; every policy reads them back through `app.uid()`.
+`withRls()` in `src/lib/aws/pool.ts` does exactly those two statements, so the
+same policies — not the Node process — keep deciding what each person sees.
+
+Verified against the real schema and the demo data: an Owner sees 3 documents
+and 16 assignments, a T1 member sees 0 and 2, and an anonymous connection is
+refused the user directory but can still load a published form. Both settings
+are transaction-local, so a connection handed back to the pool carries no trace
+of who it just served.
+
+### What still has to happen before the app can move over
+
+`npm run db:aurora` gets the *data* to Aurora. Three things are not data:
+
+- **The 153 queries** in `src/features` and `src/lib/db.ts` speak the Supabase
+  PostgREST builder (`.from(...).select(...)`), not SQL. `scripts/dev-api.mjs`
+  already translates that dialect into SQL for local development — it is the
+  obvious starting point for an in-process version.
+- **File uploads** use Supabase Storage. Aurora has no equivalent; this becomes
+  S3, and `src/features/files` is where it is bounded.
+- **Live document editing** uses Supabase Realtime. Aurora has no equivalent
+  either. The editor already degrades to solo mode when the transport is
+  unavailable (that is how `dev:local` works today), so this can ship broken
+  and be replaced afterwards.
+
 ---
 
 ## How sign-in works
@@ -258,12 +401,31 @@ edited *even by the Owner*, and that `DELETE` only ever soft-deletes. See
 ## Deploying to Vercel
 
 1. Push to GitHub and import the repo at [vercel.com/new](https://vercel.com/new).
-2. Add every variable from the table above under **Settings → Environment
-   Variables**, for Production *and* Preview.
-3. Deploy. The build command is the default `next build`.
+2. Provision the database. The app needs Supabase specifically — not just
+   Postgres — because it talks to PostgREST, Storage and Realtime over HTTP and
+   leans on RLS for permissions. The quickest route is **Storage → add
+   Supabase** from the Vercel Marketplace, which creates the project and sets
+   most of the variables for you.
+3. Fill the gaps under **Settings → Environment Variables**, for Production
+   *and* Preview: `SUPABASE_JWT_SECRET`, `OWNER_EMAIL` and `OWNER_BACKUP_EMAIL`
+   are not provisioned for you.
+4. Run the schema against the new project:
+   `vercel env pull .env.local && npm run db:setup`. The setup script
+   understands the Marketplace names, including `POSTGRES_URL_NON_POOLING` for
+   the migration connection.
+5. Deploy. The build command is the default `next build`.
 
 Because sessions live in the database and on the device, a deploy does not
 sign anyone out.
+
+**If the deployed site shows "Finish setting up":** one or more variables from
+the table above are missing or malformed on that deployment. The screen names
+each one and where its value comes from. Set them, then **redeploy** — the
+`NEXT_PUBLIC_` values are compiled into the build, so saving them in the Vercel
+dashboard does not change a deployment that already exists.
+
+Preview deployments have their own environment. A variable added only to
+Production leaves every `-git-<branch>` preview URL on that screen.
 
 **Custom domain:** add it under **Settings → Domains**. Public form links use
 the request's own host, so they pick up the new domain automatically.
@@ -280,7 +442,7 @@ src/
     onboarding/       first-run profile setup
     blocked/[status]  pending / requested / suspended / banned screens
     f/[slug]/         public form submission, no session needed
-    api/              document export, full data export
+    api/              document export, full data export, Aurora health check
   components/         shared UI — shell, ECG motif, avatar, tier badge
   features/           one folder per feature, components + server actions
   lib/
@@ -288,7 +450,9 @@ src/
     audit.ts          the audit-log writer used by every mutation
     auth/             session and sign-in
     supabase/         admin (service role) and per-user clients
+    aws/              Aurora connection pool and its settings (not yet used by the app)
 supabase/migrations/  schema and RLS, in filename order
+certs/                AWS's public RDS trust store, for verifying Aurora's TLS
 tests/                unit tests; tests/sql holds the RLS suite
 ```
 

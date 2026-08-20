@@ -55,8 +55,44 @@ function fail(message, hint) {
   process.exit(1);
 }
 
+/**
+ * Names each value may arrive under, most-preferred first.
+ *
+ * A Supabase project added through the Vercel Marketplace injects its own
+ * names, so `vercel env pull` produces a file this script would otherwise
+ * reject despite every value being present. Resolving them to the canonical
+ * names up front leaves the rest of the script unchanged.
+ *
+ * The migration connection deliberately prefers the non-pooling URL: these are
+ * DDL statements, and a transaction-mode pooler is the wrong end of the
+ * connection for those.
+ */
+const ALIASES = {
+  NEXT_PUBLIC_SUPABASE_URL: ['SUPABASE_URL'],
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: [
+    'SUPABASE_ANON_KEY',
+    'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+    'SUPABASE_PUBLISHABLE_KEY',
+  ],
+  SUPABASE_SERVICE_ROLE_KEY: ['SUPABASE_SECRET_KEY'],
+  SUPABASE_DB_URL: ['POSTGRES_URL_NON_POOLING', 'POSTGRES_URL', 'DATABASE_URL'],
+};
+
+function resolveAliases() {
+  for (const [canonical, alternatives] of Object.entries(ALIASES)) {
+    if (process.env[canonical]) continue;
+    for (const name of alternatives) {
+      if (!process.env[name]) continue;
+      process.env[canonical] = process.env[name];
+      info(`using ${name} for ${canonical}`);
+      break;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 loadEnvLocal();
+resolveAliases();
 
 console.log(c.bold('\nHackathon Studio — Supabase setup\n'));
 
@@ -68,7 +104,7 @@ const required = {
   SUPABASE_SERVICE_ROLE_KEY: 'Settings > API > service_role key',
   SUPABASE_JWT_SECRET: 'Settings > API > JWT Settings > JWT Secret',
   OWNER_EMAIL: 'the email address that should be the first Owner',
-  SUPABASE_DB_URL: 'Settings > Database > Connection string > URI',
+  SUPABASE_DB_URL: 'Settings > Database > Connection string > URI (or POSTGRES_URL_NON_POOLING)',
 };
 
 const missing = Object.entries(required).filter(([key]) => !process.env[key]);
