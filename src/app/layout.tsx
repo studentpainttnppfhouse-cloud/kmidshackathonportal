@@ -1,6 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { envProblems } from '@/lib/env';
-import { SetupRequired } from '@/components/setup-required';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,16 +13,7 @@ export const viewport: Viewport = {
   themeColor: '#EC4899',
 };
 
-/**
- * A deployment with no Supabase credentials cannot render a single app route:
- * every one of them resolves the session first, and that needs the service-role
- * key. Left alone it surfaces as Next's opaque "a server-side exception has
- * occurred" digest, which tells whoever just deployed nothing at all. So the
- * check happens here, once, above every route, and names what is missing.
- */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const problems = envProblems();
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -44,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body>{problems.length > 0 ? <SetupRequired problems={problems} /> : children}</body>
+      <body>{children}</body>
     </html>
   );
 }
