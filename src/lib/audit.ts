@@ -1,6 +1,6 @@
 import 'server-only';
 import { headers } from 'next/headers';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { clientIp } from '@/lib/auth/session';
 
 /**

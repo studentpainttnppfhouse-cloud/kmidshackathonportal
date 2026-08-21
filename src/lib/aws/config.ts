@@ -15,8 +15,14 @@
 export type AuroraAuth =
   /** Vercel OIDC -> AWS IAM role -> a signed 15-minute RDS token. No password anywhere. */
   | { kind: 'iam'; roleArn: string }
-  /** A plain password, for local development and non-Vercel hosts. */
-  | { kind: 'password'; password: string };
+  /** A plain password, for non-Vercel hosts. */
+  | { kind: 'password'; password: string }
+  /**
+   * No credentials at all. Only ever accepted for a database on this machine,
+   * which is how a default Postgres install is set up — `npm run dev:local`
+   * would otherwise demand a password that does not exist.
+   */
+  | { kind: 'trust' };
 
 export interface AuroraConfig {
   host: string;
@@ -65,6 +71,14 @@ export interface AuroraProblem {
 }
 
 type Vars = Record<string, string | undefined>;
+
+/**
+ * A database on this machine, where trust or peer authentication is the norm.
+ * `pool.ts` makes the same call about whether to require TLS.
+ */
+export function isLocalHost(host: string): boolean {
+  return ['localhost', '127.0.0.1', '::1'].includes(host) || host.startsWith('/');
+}
 
 /** First non-empty value among a key's accepted names. */
 function pick(vars: Vars, key: keyof typeof ALIASES): string | undefined {
@@ -165,6 +179,11 @@ export function resolveAurora(
     require_('region', region);
   } else if (password) {
     auth = { kind: 'password', password };
+  } else if (host && isLocalHost(host)) {
+    // A local Postgres almost always trusts the local user. Demanding a
+    // password here would break `npm run dev:local`, which is the one setup
+    // path that is supposed to need nothing at all.
+    auth = { kind: 'trust' };
   } else {
     problems.push({
       key: 'AWS_ROLE_ARN',

@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { Signer } from '@aws-sdk/rds-signer';
 import { awsCredentialsProvider } from '@vercel/functions/oidc';
-import { resolveAurora, type AuroraConfig } from '@/lib/aws/config';
+import { isLocalHost, resolveAurora, type AuroraConfig } from '@/lib/aws/config';
+import { registerTypeParsers } from '@/lib/pg/types';
 
 /**
  * The Aurora PostgreSQL connection.
@@ -22,14 +23,9 @@ import { resolveAurora, type AuroraConfig } from '@/lib/aws/config';
  * imports this must export `runtime = 'nodejs'`.
  */
 
-// PostgREST returns `date` and `time` as bare strings ("2027-03-20",
-// "07:00:00"); node-pg would hand back Date objects that serialise to full ISO
-// timestamps. Parsing them the same way here means a query returns the same
-// shape whether it went through Supabase or Aurora — otherwise every date in
-// the UI would shift when the data layer moves over.
-pg.types.setTypeParser(1082, (v) => v); // date
-pg.types.setTypeParser(1083, (v) => v); // time
-pg.types.setTypeParser(1114, (v) => v); // timestamp without time zone
+// Row values must decode the way PostgREST decoded them, or every date in the
+// UI shifts and `files.size` stops being a number. See lib/pg/types.
+registerTypeParsers();
 
 /**
  * AWS publishes one CA bundle covering every RDS region. It is committed so
@@ -38,16 +34,6 @@ pg.types.setTypeParser(1114, (v) => v); // timestamp without time zone
  * certificate at all, and so defends against nothing.
  */
 let caCache: string | null = null;
-
-/**
- * Aurora requires TLS. A Postgres on your own machine almost never offers it,
- * so decide from the host rather than assuming — `scripts/setup.mjs` makes the
- * same call for Supabase, and it lets this module be pointed at a local
- * database while the data layer is being moved over.
- */
-function isLocalHost(host: string): boolean {
-  return ['localhost', '127.0.0.1', '::1'].includes(host) || host.startsWith('/');
-}
 
 function rdsCertificateAuthority(): string {
   if (caCache) return caCache;
@@ -105,12 +91,15 @@ function buildPool(): pg.Pool {
     port: config.port,
     database: config.database,
     user: config.user,
-    // A function, not a string: `pg` calls it for every new connection, so an
-    // expired IAM token is replaced without recycling the pool.
+    // A function, for IAM: `pg` calls it on every new connection, so an expired
+    // token is replaced without recycling the pool. Undefined for a local
+    // database that authenticates by trust.
     password:
       config.auth.kind === 'iam'
         ? () => iamAuthToken(config, (config.auth as { roleArn: string }).roleArn)
-        : config.auth.password,
+        : config.auth.kind === 'password'
+          ? config.auth.password
+          : undefined,
     ssl: isLocalHost(config.host)
       ? false
       : { ca: rdsCertificateAuthority(), rejectUnauthorized: true },

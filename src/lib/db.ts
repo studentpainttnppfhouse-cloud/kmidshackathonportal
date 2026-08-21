@@ -1,5 +1,5 @@
 import 'server-only';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import type { AssignmentStatus, Department, Priority, SessionUser } from '@/lib/types';
 import type {
   AnnouncementRow, AssignmentRow, DirectoryUser,

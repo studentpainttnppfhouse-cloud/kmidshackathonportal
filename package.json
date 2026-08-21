@@ -11,16 +11,18 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev:api": "node scripts/dev-api.mjs",
     "dev:local": "node scripts/dev-local.mjs",
-    "db:setup": "node scripts/setup.mjs",
+    "db:setup": "node scripts/aurora-setup.mjs",
     "db:aurora": "node scripts/aurora-setup.mjs",
     "smoke": "node scripts/smoke/flows.mjs && node scripts/smoke/documents.mjs",
-    "smoke:screens": "node scripts/smoke/screens.mjs"
+    "smoke:screens": "node scripts/smoke/screens.mjs",
+    "db:relations": "node scripts/generate-relationships.mjs",
+    "db:testdb": "node scripts/test-db.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1115.0",
     "@aws-sdk/rds-signer": "^3.1114.0",
-    "@supabase/supabase-js": "^2.45.4",
+    "@aws-sdk/s3-request-presigner": "^3.1115.0",
     "@tiptap/extension-collaboration": "^2.27.2",
     "@tiptap/extension-collaboration-cursor": "^2.26.2",
     "@tiptap/extension-color": "^2.6.6",

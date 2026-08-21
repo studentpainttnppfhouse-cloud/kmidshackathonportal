@@ -3,11 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
+import { userClient } from '@/lib/pg/server';
+import { removeObjects, uploadObject } from '@/lib/storage';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
-import { MAX_FILE_BYTES, STORAGE_BUCKET } from './constants';
+import { MAX_FILE_BYTES } from './constants';
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -57,11 +57,14 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
   const v = parsed.data;
   const key = `${v.department_id ?? 'general'}/${crypto.randomUUID()}-${sanitise(file.name)}`;
 
-  // Storage upload uses the service role; the row insert below goes through
-  // the user's token, so RLS still decides whether they may file it here.
-  const upload = await adminClient()
-    .storage.from(STORAGE_BUCKET)
-    .upload(key, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+  // The object goes up with the deployment's own credentials; the row insert
+  // below goes through the user's session, so RLS still decides whether they
+  // may file it in that department.
+  const upload = await uploadObject(
+    key,
+    new Uint8Array(await file.arrayBuffer()),
+    file.type || 'application/octet-stream',
+  );
 
   if (upload.error) {
     return { ok: false, error: `Upload failed: ${upload.error.message}` };
@@ -85,7 +88,7 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
 
   if (error || !data) {
     // Do not leave an orphaned object behind if the row was refused.
-    await adminClient().storage.from(STORAGE_BUCKET).remove([key]);
+    await removeObjects([key]);
     return {
       ok: false,
       error: error?.message.includes('row-level security')

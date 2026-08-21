@@ -29,37 +29,38 @@ npm run dev:local              # http://localhost:3000
 That creates the database, applies the migrations, loads demo content, and
 starts the app. Sign in as **june@kmids.ac.th** — no password, no setup.
 
-`dev:local` runs a small local stand-in for Supabase (`scripts/dev-api.mjs`)
-so you can develop without a cloud account. It applies the same RLS policies
-as production, so what you build against is what ships. It does not implement
-Realtime, so live collaboration is off locally — everything else works.
+`dev:local` needs no cloud account at all: the app talks to your local
+Postgres directly, uploads go to a `.storage/` directory, and the same RLS
+policies apply as in production — so what you build against is what ships.
+Live collaboration works locally too.
 
-### Going live on Supabase
+### Going live on Aurora
 
 ```bash
-cp .env.example .env.local     # fill in the five values below
-npm run db:setup -- --seed     # migrations, storage bucket, demo data
+cp .env.example .env.local     # fill in the values below
+npm run db:aurora -- --seed    # roles, migrations, demo data
 npm run dev
 ```
 
-`db:setup` is resumable and safe to re-run: it tracks which migrations have
-already applied and skips them. Setting up the Supabase project takes about
-ten minutes the first time.
+`db:aurora` is resumable and safe to re-run: it records which migrations have
+already applied and skips them. Setting up the AWS side takes about twenty
+minutes the first time — see *Aurora PostgreSQL on AWS* below for the full
+walkthrough.
 
-### 1. Create the Supabase project
+### 1. Create the database
 
-1. Sign up at [supabase.com](https://supabase.com) and create a project.
-2. Go to **Settings → API** and copy:
-   - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon` `public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` *(never put this in the browser)*
-3. Go to **Settings → API → JWT Settings** and copy the **JWT Secret** →
-   `SUPABASE_JWT_SECRET`.
+An Aurora PostgreSQL cluster (Serverless v2 is fine), with **IAM database
+authentication** turned on. Any PostgreSQL 14+ works — Neon, RDS, or a server
+of your own — the app only needs a connection and the ability to create roles.
 
 ### 2. Run the migrations
 
-In the Supabase dashboard, open **SQL Editor** and run each file in
-`supabase/migrations/` **in filename order**:
+```bash
+npm run db:aurora
+```
+
+That creates the three roles the policies grant to, then applies every file in
+`supabase/migrations/` in filename order:
 
 ```
 0010_foundation.sql      extensions, enums, RLS helpers, the audit log
@@ -71,23 +72,21 @@ In the Supabase dashboard, open **SQL Editor** and run each file in
 0070_seed.sql            the six departments and the event-day reference data
 0080_bootstrap_owner.sql the owner bootstrap helper
 0090_grants.sql          table privileges — must be last
+0100_collab.sql          the relay live document editing runs over
 ```
 
 Order matters. `0090_grants.sql` applies to every table created before it, so
-running it early silently leaves later tables unreachable.
+running it early silently leaves earlier tables unreachable.
 
-Or, with the Supabase CLI:
+### 3. Create the bucket
 
-```bash
-supabase link --project-ref <your-ref>
-supabase db push
-```
+An S3 bucket in the same account, named in `FILES_BUCKET`. It holds uploaded
+images, PDFs and design exports, and should stay **private** — the app hands
+out pre-signed links that expire rather than public URLs. The 50 MB per-file
+cap is enforced in the upload action, in the database constraint, and in the
+UI.
 
-### 3. Create the storage bucket
-
-**Storage → New bucket**, named `files`, **public**. This holds uploaded
-images, PDFs and design exports. The 50 MB per-file cap is enforced in the
-upload action, in the database constraint, and in the UI.
+For development, set `FILES_DIR` instead and uploads go to a local directory.
 
 ### 4. Set the Owner emails
 
@@ -104,46 +103,49 @@ address restores it — the app repairs the account back to T4 on sign-in.
 
 | Variable | Required | What it is |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Public anon key; safe in the browser |
-| `SUPABASE_SERVICE_ROLE_KEY` | yes | **Server only.** Bypasses all RLS |
-| `SUPABASE_JWT_SECRET` | yes | Signs the PostgREST token (see *How sign-in works*) |
+| `RDS_HOSTNAME` | yes | The cluster's writer endpoint |
+| `RDS_DATABASE` | yes | Database name |
+| `RDS_USERNAME` | yes | The login the app connects as |
+| `AWS_REGION` | yes | Region of the cluster and the bucket |
+| `AWS_ROLE_ARN` | yes\* | IAM role to assume. \*Or `RDS_PASSWORD` instead |
+| `FILES_BUCKET` | yes\* | S3 bucket for uploads. \*Or `FILES_DIR` for local disk |
 | `OWNER_EMAIL` | yes | First Owner, created at T4 on first sign-in |
 | `OWNER_BACKUP_EMAIL` | recommended | Second Owner |
+| `RDS_PORT` | no | Defaults to 5432 |
 | `SCHOOL_EMAIL_DOMAIN` | no | Defaults to `kmids.ac.th` |
 
-`.env.local` is gitignored. Never commit real keys.
+`.env.local` is gitignored. Never commit real credentials.
 
-The Aurora variables are separate and all optional — see *Aurora PostgreSQL on
-AWS* below. Nothing there is needed to run or deploy the portal.
-
-**Alternate names.** A Supabase project added through the Vercel Marketplace
-injects its own variable names, so each value is also read from the names below
-— set either one. `SUPABASE_JWT_SECRET` has no alternate: the integration does
-not reliably provision it, so copy it across by hand.
+**Alternate names.** The AWS and Postgres integrations each inject their own
+variable names, so every value is also read from the names below — set
+whichever you have. The whole connection can be given as one URI instead:
+`AURORA_DATABASE_URL` (or `RDS_DATABASE_URL`).
 
 | Canonical | Also read from |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | `SUPABASE_URL` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PUBLISHABLE_KEY` |
-| `SUPABASE_SERVICE_ROLE_KEY` | `SUPABASE_SECRET_KEY` |
-| `SUPABASE_DB_URL` (setup script only) | `POSTGRES_URL_NON_POOLING`, `POSTGRES_URL`, `DATABASE_URL` |
+| `RDS_HOSTNAME` | `RDS_HOST`, `AURORA_HOST`, `PGHOST`, `POSTGRES_HOST` |
+| `RDS_PORT` | `PGPORT`, `POSTGRES_PORT` |
+| `RDS_DATABASE` | `RDS_DB_NAME`, `PGDATABASE`, `POSTGRES_DATABASE` |
+| `RDS_USERNAME` | `RDS_USER`, `PGUSER`, `POSTGRES_USER` |
+| `RDS_PASSWORD` | `PGPASSWORD`, `POSTGRES_PASSWORD` |
+| `AWS_REGION` | `AWS_DEFAULT_REGION`, `RDS_REGION` |
+| `AWS_ROLE_ARN` | `RDS_ROLE_ARN` |
+| `FILES_BUCKET` | `S3_BUCKET`, `AWS_S3_BUCKET`, `STORAGE_BUCKET` |
 
 ---
 
 ## Aurora PostgreSQL on AWS
 
-The portal runs on Supabase. Aurora is wired up **alongside** it: the
-connection, the schema and a health check exist, and nothing in the app reads
-from it yet. That split is deliberate — it means the AWS side can be set up and
-proved to work on a normal week, rather than during the migration itself.
-
-### What is already done
+Aurora is the portal's only database. The app connects to it directly with
+`pg` — there is no PostgREST, no Supabase project, and no service in between.
 
 | Piece | Where |
 | --- | --- |
 | Connection pool, IAM auth, TLS | `src/lib/aws/pool.ts` |
 | Where the settings come from | `src/lib/aws/config.ts` |
+| The query builder the app writes against | `src/lib/pg/` |
+| Per-user, anonymous and admin clients | `src/lib/pg/server.ts` |
+| File uploads (S3, or local disk) | `src/lib/storage/` |
 | Health check | `GET /api/health/db` |
 | Schema + roles + demo data | `npm run db:aurora` |
 | AWS's public CA bundle | `certs/rds-global-bundle.pem` |
@@ -218,8 +220,7 @@ console page that fixes it.
 
 Every policy in `supabase/migrations` is written `to authenticated`, and
 `0090_grants.sql` grants privileges to `anon`, `authenticated` and
-`service_role`. Supabase creates those three roles for you; a bare Aurora
-cluster has none of them, and the first migration fails on the first policy
+`service_role`. A bare Aurora cluster has none of them, and the first migration fails on the first policy
 without them. `db:aurora` creates them, and grants all three to your login user
 so the app can switch between them per request.
 
@@ -242,20 +243,38 @@ refused the user directory but can still load a published form. Both settings
 are transaction-local, so a connection handed back to the pool carries no trace
 of who it just served.
 
-### What still has to happen before the app can move over
+### How the queries still look like PostgREST
 
-`npm run db:aurora` gets the *data* to Aurora. Three things are not data:
+The app was written against the Supabase query builder — 153 call sites of
+`db.from('assignments').select(...).eq(...)`. Rather than hand-rewrite every
+one of them into SQL, `src/lib/pg/` implements that same interface on top of
+`pg`. A dropped filter in a hand rewrite looks exactly like a working query,
+and there were 153 chances to make that mistake.
 
-- **The 153 queries** in `src/features` and `src/lib/db.ts` speak the Supabase
-  PostgREST builder (`.from(...).select(...)`), not SQL. `scripts/dev-api.mjs`
-  already translates that dialect into SQL for local development — it is the
-  obvious starting point for an in-process version.
-- **File uploads** use Supabase Storage. Aurora has no equivalent; this becomes
-  S3, and `src/features/files` is where it is bounded.
-- **Live document editing** uses Supabase Realtime. Aurora has no equivalent
-  either. The editor already degrades to solo mode when the transport is
-  unavailable (that is how `dev:local` works today), so this can ship broken
-  and be replaced afterwards.
+| File | What it does |
+| --- | --- |
+| `select.ts` | Parses the `select=` grammar, embeds and all |
+| `relationships.ts` | The foreign-key graph, generated from the migrations |
+| `sql.ts` | Turns a parsed select into SQL, embeds as JSON subqueries |
+| `builder.ts` | The chainable builder; resolves to `{ data, error }` |
+| `server.ts` | The three clients — per-user, anonymous, admin |
+
+Embedding works the way it did: `owner:owner_id ( nickname )` becomes a
+correlated subquery returning JSON, so a nested read is still one round trip
+*and* the embedded table is filtered by its own policies. Because the FK graph
+decides how an embed resolves, it is generated and committed rather than read
+from the live database at runtime — run `npm run db:relations` after changing
+a foreign key, and `npm run db:relations -- --check` fails if it is stale.
+
+**Live document editing** moved from Supabase Realtime to a relay table
+(`0100_collab.sql`) that peers poll through `/api/collab/[documentId]`.
+Polling is chattier than a websocket, but it works on any host — including
+serverless ones that will not hold a connection open — and it needs no service
+beyond the database. The editor still falls back to solo autosave when the
+relay is unreachable.
+
+**File uploads** moved to S3, behind `src/lib/storage/`. A local-disk driver
+is selected by `FILES_DIR` so development needs no AWS account.
 
 ---
 
@@ -327,11 +346,13 @@ drift.
 | `T3` | Administration | Full read/write across all departments. Publishes all-staff announcements. All analytics. **Cannot** manage users or read the audit log. |
 | `T4` | Owner | Everything in T3, plus the Owner Console: users, tiers, invites, suspensions, bans, audit log, exports, ownership transfer. |
 
-Since sign-in is email-only, the app mints its own HS256 JWT signed with
-`SUPABASE_JWT_SECRET`. PostgREST validates it exactly as it would a Supabase
-Auth token. **The token carries an id and nothing else that matters** — tier,
-status and department are read from the `users` table by the policy helpers on
-every call, so a stale or tampered token cannot widen anyone's access.
+Since sign-in is email-only, there is no auth token to borrow. Instead every
+statement runs inside a transaction that switches to the `authenticated` role
+and publishes the signed-in user's id as `request.jwt.claims` — the two
+statements PostgREST used to run, now in `withRls()` in `src/lib/aws/pool.ts`.
+**The claims carry an id and nothing else that matters** — tier, status and
+department are read from the `users` table by the policy helpers on every
+call, so nothing the process passes in can widen anyone's access.
 
 ### The escalation guard
 
@@ -350,11 +371,26 @@ those actions writes to the audit log.
 ## Testing
 
 ```bash
-npm test          # unit tests — permissions, forms, spreadsheet, export, collab
+npm test          # unit tests — permissions, forms, spreadsheet, export, collab, SQL builder
 npm run typecheck # TypeScript, strict mode
 npm run build     # production build
 npm run smoke     # drives the real app in a browser (needs it running)
 ```
+
+### The query builder tests
+
+`tests/pg-builder.test.ts` pins the generated SQL, which is worth doing but
+only proves it *looks* right. `tests/pg-integration.test.ts` runs the app's
+real queries against a real PostgreSQL with the real migrations — embeds,
+counts, upserts, timestamp decoding, and that RLS still filters what comes
+back. It skips itself unless a scratch database is set up:
+
+```bash
+npm run db:testdb                 # create it, migrate it, seed it
+TEST_DATABASE_URL="postgresql://postgres@localhost:5432/hackathon_test" npm test
+```
+
+Run these after touching anything in `src/lib/pg/`.
 
 ### The browser smoke tests
 
@@ -377,7 +413,7 @@ setting `request.jwt.claims` — which is exactly what the database sees when a
 student calls the API from devtools.
 
 ```bash
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f tests/sql/rls_test.sql
+psql "$AURORA_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/sql/rls_test.sql
 ```
 
 Or against a throwaway local Postgres:
@@ -401,28 +437,31 @@ edited *even by the Owner*, and that `DELETE` only ever soft-deletes. See
 ## Deploying to Vercel
 
 1. Push to GitHub and import the repo at [vercel.com/new](https://vercel.com/new).
-2. Provision the database. The app needs Supabase specifically — not just
-   Postgres — because it talks to PostgREST, Storage and Realtime over HTTP and
-   leans on RLS for permissions. The quickest route is **Storage → add
-   Supabase** from the Vercel Marketplace, which creates the project and sets
-   most of the variables for you.
-3. Fill the gaps under **Settings → Environment Variables**, for Production
-   *and* Preview: `SUPABASE_JWT_SECRET`, `OWNER_EMAIL` and `OWNER_BACKUP_EMAIL`
-   are not provisioned for you.
-4. Run the schema against the new project:
-   `vercel env pull .env.local && npm run db:setup`. The setup script
-   understands the Marketplace names, including `POSTGRES_URL_NON_POOLING` for
-   the migration connection.
-5. Deploy. The build command is the default `next build`.
+2. Provision the database. Any PostgreSQL 14+ the deployment can reach will
+   do — the app needs a connection and RLS, nothing more. See *Aurora
+   PostgreSQL on AWS* above for the cluster, the IAM role and the bucket.
+3. Install the **AWS integration** on the Vercel project and link it to the
+   IAM role. That provides `AWS_ROLE_ARN` and `AWS_REGION`, which is what lets
+   the deployment reach both Aurora and S3 without a stored password.
+4. Fill the gaps under **Settings → Environment Variables**, for Production
+   *and* Preview: the cluster endpoint, database, user, `FILES_BUCKET`,
+   `OWNER_EMAIL` and `OWNER_BACKUP_EMAIL` are not provisioned for you.
+5. Run the schema once from a machine that can reach the cluster:
+   `vercel env pull .env.local && npm run db:aurora`.
+6. Deploy. The build command is the default `next build`.
 
 Because sessions live in the database and on the device, a deploy does not
 sign anyone out.
 
 **If the deployed site shows "Finish setting up":** one or more variables from
 the table above are missing or malformed on that deployment. The screen names
-each one and where its value comes from. Set them, then **redeploy** — the
-`NEXT_PUBLIC_` values are compiled into the build, so saving them in the Vercel
-dashboard does not change a deployment that already exists.
+each one and where its value comes from. Set them, then **redeploy** — saving
+a variable in the Vercel dashboard does not change a deployment that already
+exists.
+
+`/api/health/db` is the quickest way to tell a configuration problem from a
+connectivity one: it answers with the server version and round-trip time, or
+names the variable that is missing and the console page that fixes it.
 
 Preview deployments have their own environment. A variable added only to
 Production leaves every `-git-<branch>` preview URL on that screen.
@@ -442,16 +481,20 @@ src/
     onboarding/       first-run profile setup
     blocked/[status]  pending / requested / suspended / banned screens
     f/[slug]/         public form submission, no session needed
-    api/              document export, full data export, Aurora health check
+    api/              document export, full data export, collab relay,
+                      local file serving, database health check
   components/         shared UI — shell, ECG motif, avatar, tier badge
   features/           one folder per feature, components + server actions
   lib/
     permissions.ts    tier logic, mirrored from the RLS policies
     audit.ts          the audit-log writer used by every mutation
     auth/             session and sign-in
-    supabase/         admin (service role) and per-user clients
-    aws/              Aurora connection pool and its settings (not yet used by the app)
-supabase/migrations/  schema and RLS, in filename order
+    pg/               the query builder, and the per-user/anon/admin clients
+    aws/              Aurora connection pool and its settings
+    storage/          uploaded files — S3, or a local directory
+    collab/           Yjs provider and the polling relay transport
+supabase/migrations/  schema and RLS, in filename order (the directory keeps
+                      its name; nothing in it is Supabase-specific)
 certs/                AWS's public RDS trust store, for verifying Aurora's TLS
 tests/                unit tests; tests/sql holds the RLS suite
 ```
@@ -462,7 +505,9 @@ to the screen that calls it.
 ### Conventions worth keeping
 
 - Every mutation is a Server Action that validates with Zod, writes through
-  the **user's** Supabase client, and records an audit entry.
+  the **user's** client (`userClient()`, which applies RLS), and records an
+  audit entry. `adminClient()` bypasses RLS and is for three things only —
+  see the comment on it in `src/lib/pg/server.ts`.
 - RLS filters an `UPDATE` to zero rows rather than raising, so actions check
   for a missing row and return a readable message instead of failing silently.
 - Nothing is hard-deleted. Every table has `deleted_at` and a trigger that
@@ -480,16 +525,22 @@ Called out honestly so nobody rediscovers them the hard way.
   dialogue, rather than generating a PDF server-side. A real PDF would mean
   shipping a headless browser to a serverless function — a lot of weight for a
   feature used a handful of times a term. DOCX export is a genuine `.docx`.
-- **Realtime collaboration works on documents, not spreadsheets.** Documents
-  merge through Yjs over Supabase Realtime, with live cursors and presence.
-  When Realtime is unreachable the editor falls back to single-user autosave
-  and says so, rather than refusing to open. Spreadsheets still last-write-wins
-  — the schema carries `yjs_state` for them but the grid is not wired up.
-- **The collaboration path is tested by unit tests, not against live Supabase.**
-  `tests/collab.test.ts` runs two providers against an in-memory channel and
-  asserts they converge, that a late joiner does not double the content, and
-  that a departing peer's cursor is removed. Worth a two-browser sanity check
-  once you have a project.
+- **Live collaboration works on documents, not spreadsheets.** Documents merge
+  through Yjs over the relay table, with live cursors and presence. When the
+  relay is unreachable the editor falls back to single-user autosave and says
+  so, rather than refusing to open. Spreadsheets are still last-write-wins —
+  the schema carries `yjs_state` for them but the grid is not wired up.
+- **Collaboration polls rather than pushes.** Every open editor asks the relay
+  for new updates — roughly four times a second while someone is typing,
+  dropping to once every two seconds when idle. That is fine for the handful
+  of people who edit one document at once, and it works on hosts that will not
+  hold a websocket open. If a document ever has dozens of simultaneous editors,
+  this is the thing to replace.
+- **The collaboration path is tested by unit tests, not against a live
+  cluster.** `tests/collab.test.ts` runs two providers against an in-memory
+  channel and `tests/http-transport.test.ts` runs them against a stand-in for
+  the relay route, asserting they converge and that a late joiner does not
+  double the content. Worth a two-browser sanity check on a real deployment.
 - **Email delivery** is not connected. Invites appear in the Owner Console and
   work the moment the person signs in, but no email is actually sent — tell
   people directly, or paste them an invite key. The daily digest in §5.10 of

@@ -1,5 +1,5 @@
 import 'server-only';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { ownerEmails, schoolDomain } from '@/lib/env';
 import type { AccountStatus, AppUser, Tier } from '@/lib/types';

@@ -3,9 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
-import { anonClient } from '@/lib/supabase/user';
+import { adminClient, userClient } from '@/lib/pg/server';
+import { anonClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { assertCanMutate, canManageUsers } from '@/lib/permissions';
 import { FIELD_TYPES, answerToText, validateAnswers, type FormField } from '@/lib/forms';

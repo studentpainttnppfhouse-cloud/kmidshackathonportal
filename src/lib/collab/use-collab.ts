@@ -1,23 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import * as Y from 'yjs';
 import { CollabProvider, cursorColorFor } from './provider';
-import { createSupabaseTransport } from './supabase-transport';
+import { createHttpTransport } from './http-transport';
 
 export type CollabStatus = 'connecting' | 'live' | 'solo';
-
-/**
- * The project's public URL and key, resolved on the server and passed down.
- * Not read from `process.env` here: Next only inlines literal `NEXT_PUBLIC_*`
- * reads into the client bundle, so a project provisioned through the Vercel
- * Marketplace — which may only set `SUPABASE_URL` — would leave this file
- * pointing at an empty string.
- */
-export interface SupabaseConfig {
-  url: string;
-  anonKey: string;
-}
 
 export interface CollabPeer {
   clientId: number;
@@ -28,17 +16,15 @@ export interface CollabPeer {
 /**
  * Joins a document's collaboration channel.
  *
- * Returns `solo` when Realtime is unreachable — no project configured, a
- * blocked websocket, or the local dev shim. The editor stays fully usable in
- * that state and keeps its debounced autosave; it just cannot merge with
+ * Returns `solo` when the relay is unreachable. The editor stays fully usable
+ * in that state and keeps its debounced autosave; it just cannot merge with
  * anyone else. That fallback is deliberate: an editor that refuses to open
- * because a websocket failed would be far worse than one that saves normally.
+ * because a request failed would be far worse than one that saves normally.
  */
 export function useCollab(
   documentId: string,
   user: { name: string; email: string },
   enabled: boolean,
-  config: SupabaseConfig,
 ) {
   const [status, setStatus] = useState<CollabStatus>(enabled ? 'connecting' : 'solo');
   const [isFirst, setIsFirst] = useState<boolean | null>(enabled ? null : true);
@@ -55,29 +41,32 @@ export function useCollab(
 
     let cancelled = false;
 
-    const supabase = createClient(config.url, config.anonKey, {
-      auth: { persistSession: false },
-    });
-
-    const instance = new CollabProvider(
-      createSupabaseTransport(supabase, documentId),
+    // The Yjs client id doubles as the relay's sender id, so a peer can drop
+    // its own messages without the server having to know who anyone is. The
+    // document is made first so that id exists before the transport does.
+    const doc = new Y.Doc();
+    const transport = createHttpTransport(documentId, String(doc.clientID));
+    const collab = new CollabProvider(
+      transport,
       { name: user.name, color: cursorColorFor(user.email) },
+      doc,
     );
-    providerRef.current = instance;
-    setProvider(instance);
+
+    providerRef.current = collab;
+    setProvider(collab);
 
     const onAwareness = () => {
-      const states = [...instance.awareness.getStates().entries()]
-        .filter(([clientId]) => clientId !== instance.doc.clientID)
+      const states = [...collab.awareness.getStates().entries()]
+        .filter(([clientId]) => clientId !== collab.doc.clientID)
         .map(([clientId, state]) => {
           const u = (state as { user?: { name: string; color: string } }).user;
           return { clientId, name: u?.name ?? 'Someone', color: u?.color ?? '#94A3B8' };
         });
       setPeers(states);
     };
-    instance.awareness.on('change', onAwareness);
+    collab.awareness.on('change', onAwareness);
 
-    void instance.connect().then((result) => {
+    void collab.connect().then((result) => {
       if (cancelled) return;
       setStatus(result.connected ? 'live' : 'solo');
       setIsFirst(result.isFirst);
@@ -86,23 +75,11 @@ export function useCollab(
 
     return () => {
       cancelled = true;
-      instance.awareness.off('change', onAwareness);
-      instance.destroy();
+      collab.awareness.off('change', onAwareness);
+      collab.destroy();
       providerRef.current = null;
     };
-  }, [documentId, enabled, user.name, user.email, config.url, config.anonKey]);
+  }, [documentId, enabled, user.name, user.email]);
 
   return { status, isFirst, peers, provider };
-}
-
-/**
- * Whether collaboration should even be attempted.
- *
- * The local dev shim has no websocket server, so pointing at it would mean
- * every document waiting out the join timeout before falling back. Skipping
- * the attempt keeps local development snappy.
- */
-export function collabAvailable(config: SupabaseConfig): boolean {
-  if (!config.url || !config.anonKey) return false;
-  return !/localhost|127\.0\.0\.1/.test(config.url);
 }

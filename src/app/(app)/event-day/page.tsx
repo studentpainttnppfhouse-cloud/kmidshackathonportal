@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { atLeast, canReadIncidents } from '@/lib/permissions';
 import { EVENT_MODE_START, EVENT_END } from '@/lib/types';
 import {

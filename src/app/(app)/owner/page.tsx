@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db';
 import { canManageUsers } from '@/lib/permissions';
 import { OwnerConsole } from '@/features/owner/owner-console';

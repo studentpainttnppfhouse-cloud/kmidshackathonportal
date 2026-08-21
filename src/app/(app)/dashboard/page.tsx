@@ -5,7 +5,7 @@ import {
   isOverdue, summariseByDepartment,
 } from '@/lib/db';
 import { atLeast } from '@/lib/permissions';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { relativeTime } from '@/lib/format';
 import { CountdownHero } from '@/features/dashboard/countdown-hero';
 import { TaskList } from '@/features/dashboard/task-list';

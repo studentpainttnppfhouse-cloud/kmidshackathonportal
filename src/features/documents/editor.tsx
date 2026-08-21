@@ -23,11 +23,17 @@ import {
   Heading1, Heading2, Heading3, Highlighter, Check, CloudOff, Loader2, Users, Wifi,
 } from 'lucide-react';
 import { cursorColorFor } from '@/lib/collab/provider';
-import {
-  collabAvailable, useCollab,
-  type CollabPeer, type CollabStatus, type SupabaseConfig,
-} from '@/lib/collab/use-collab';
+import { useCollab, type CollabPeer, type CollabStatus } from '@/lib/collab/use-collab';
+import * as Y from 'yjs';
+import { prosemirrorJSONToYDoc } from 'y-prosemirror';
 import { saveDocumentAction } from './actions';
+
+/**
+ * The Yjs field the Collaboration extension stores the document under. Tiptap
+ * defaults to `default`; naming it here keeps the seeding below reading from
+ * the same place the editor writes to.
+ */
+const COLLAB_FIELD = 'default';
 
 type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
 
@@ -39,17 +45,17 @@ export function DocumentEditor({
   initialTitle,
   editable,
   me,
-  supabase,
 }: {
   documentId: string;
   initialContent: object;
   initialTitle: string;
   editable: boolean;
   me: { name: string; email: string };
-  supabase: SupabaseConfig;
 }) {
-  const collabEnabled = collabAvailable(supabase);
-  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled, supabase);
+  // Only editors join the relay. A read-only viewer has nothing to broadcast,
+  // and the insert policy on collab_messages would refuse it anyway.
+  const collabEnabled = editable;
+  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled);
   const [title, setTitle] = useState(initialTitle);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<string | null>(null);
@@ -158,12 +164,39 @@ export function DocumentEditor({
   const seeded = useRef(false);
   useEffect(() => {
     if (!editor || !provider || seeded.current) return;
-    if (isFirst !== true) {
+
+    // `isFirst` is null until the join has been settled, and the editor exists
+    // before then. Marking the document seeded now would latch it shut, and
+    // the answer that arrives a moment later — "yes, seed it" — would be
+    // ignored, leaving the document permanently blank.
+    if (isFirst === null) return;
+
+    if (isFirst === false) {
       seeded.current = true;
       return;
     }
-    if (editor.isEmpty) {
-      editor.commands.setContent(initialContent, false);
+    // Seed the Yjs document, not the editor.
+    //
+    // Once Collaboration is attached, the Yjs document *is* the content, and
+    // it is authoritative: `editor.commands.setContent` is applied and then
+    // immediately undone by the sync plugin, which leaves the page blank and —
+    // because autosave then persists that blank — eventually empties the
+    // stored document too. Writing into the Y.Doc puts the content where the
+    // editor and every peer will read it from.
+    const fragment = provider.doc.getXmlFragment(COLLAB_FIELD);
+    if (fragment.length === 0) {
+      const seed = prosemirrorJSONToYDoc(
+        editor.schema,
+        initialContent as Parameters<typeof prosemirrorJSONToYDoc>[1],
+        COLLAB_FIELD,
+      );
+      Y.applyUpdate(provider.doc, Y.encodeStateAsUpdate(seed));
+
+      // That update looks exactly like the user typing, which would schedule
+      // an autosave of content just read from the database. Cancel it so the
+      // document does not open in a dirty state.
+      if (timer.current) clearTimeout(timer.current);
+      setSaveState('saved');
     }
     seeded.current = true;
   }, [editor, provider, isFirst, initialContent]);

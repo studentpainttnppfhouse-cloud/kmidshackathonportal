@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getSessionUser, hashToken, SESSION_COOKIE } from '@/lib/auth/session';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db';
 import { SettingsClient, type DeviceRow } from '@/features/settings/settings-client';
 

@@ -13,14 +13,15 @@ createdb hackathon_studio
 for f in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -d hackathon_studio -f "$f"; done
 psql -v ON_ERROR_STOP=1 -d hackathon_studio -f tests/sql/rls_test.sql
 
-# or against a Supabase branch
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f tests/sql/rls_test.sql
+# or against the real cluster
+psql "$AURORA_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/sql/rls_test.sql
 ```
 
 The script raises an exception on the first failure, so a non-zero exit status
 means something in the permission model regressed.
 
-Locally you also need the three roles Supabase provides for you:
+Locally you also need the three roles the policies grant to (`npm run
+db:aurora` creates these for you on a real cluster):
 
 ```sql
 create role anon nologin;

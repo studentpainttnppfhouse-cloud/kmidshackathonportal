@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { SHIRT_SIZES } from '@/lib/types';
 

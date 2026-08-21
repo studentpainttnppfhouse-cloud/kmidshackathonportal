@@ -121,3 +121,42 @@ describe('resolveAurora', () => {
     expect(auroraConfigured({})).toBe(false);
   });
 });
+
+describe('a database on this machine', () => {
+  it('needs no credentials, so `npm run dev:local` works out of the box', () => {
+    const result = resolveAurora({
+      PGHOST: 'localhost',
+      PGDATABASE: 'hackathon_studio',
+      PGUSER: 'postgres',
+    });
+    expect(result.problems).toEqual([]);
+    expect(result.config?.auth).toEqual({ kind: 'trust' });
+  });
+
+  it('accepts a local connection given as a URI', () => {
+    const result = resolveAurora({
+      AURORA_DATABASE_URL: 'postgresql://postgres@127.0.0.1:5432/hackathon_studio',
+    });
+    expect(result.config?.auth).toEqual({ kind: 'trust' });
+  });
+
+  it('prefers a password when one is given, even locally', () => {
+    const result = resolveAurora({
+      PGHOST: 'localhost',
+      PGDATABASE: 'hackathon_studio',
+      PGUSER: 'postgres',
+      PGPASSWORD: 'secret',
+    });
+    expect(result.config?.auth).toEqual({ kind: 'password', password: 'secret' });
+  });
+
+  it('still demands credentials for a remote host', () => {
+    const result = resolveAurora({
+      RDS_HOSTNAME: 'hs.cluster-abc.ap-southeast-1.rds.amazonaws.com',
+      RDS_DATABASE: 'hackathon',
+      RDS_USERNAME: 'portal',
+    });
+    expect(result.config).toBeNull();
+    expect(result.problems.map((p) => p.key)).toContain('AWS_ROLE_ARN');
+  });
+});

@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db';
 import { canManageUsers, canWriteDepartment } from '@/lib/permissions';
 import type { FormField, FormSettings } from '@/lib/forms';

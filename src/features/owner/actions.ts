@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser, revokeAllSessions } from '@/lib/auth/session';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { audit, diffOf } from '@/lib/audit';
 import { canManageUsers } from '@/lib/permissions';
 import { TIERS, type Tier } from '@/lib/types';

@@ -22,12 +22,11 @@ services:
     # `next start` binds to $PORT, which Render sets for us.
     startCommand: npm run start
 
-    # No `healthCheckPath`. The one health endpoint the app has,
-    # /api/health/db, reports on the *optional* Aurora cluster and answers 503
-    # when Aurora is not configured — which is the normal, supported state.
-    # Pointing Render at it would fail every deploy of a Supabase-only portal.
-    # Render falls back to checking that the service binds its port, which is
-    # the right signal here.
+    # /api/health/db answers 200 only once the service can actually reach
+    # Aurora, which is exactly what "healthy" means now that the portal has no
+    # other database. A deploy with the wrong endpoint or a closed security
+    # group fails here instead of serving error pages.
+    healthCheckPath: /api/health/db
 
     autoDeploy: true
 
@@ -38,25 +37,39 @@ services:
         value: "22"
 
       # ---------------------------------------------------------------------
-      # Supabase — Settings > API in the project dashboard.
+      # Aurora PostgreSQL. The portal has no other database, so the service
+      # cannot start serving without these.
       #
-      # The two NEXT_PUBLIC_ values are compiled into the browser bundle at
-      # build time, so changing either one needs a fresh deploy, not just a
-      # restart.
+      # Render has no OIDC exchange with AWS, so the IAM-token path the README
+      # describes for Vercel is not available here: authenticate with a
+      # password, and keep the cluster reachable from Render's egress IPs.
       # ---------------------------------------------------------------------
-      - key: NEXT_PUBLIC_SUPABASE_URL
+      - key: RDS_HOSTNAME
         sync: false
-      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+      - key: RDS_PORT
+        value: "5432"
+      - key: RDS_DATABASE
         sync: false
+      - key: RDS_USERNAME
+        sync: false
+      - key: RDS_PASSWORD
+        sync: false
+      - key: AWS_REGION
+        value: ap-southeast-1
 
-      # Server-side only. Bypasses every RLS policy — never expose it to the
-      # browser, and never give it a NEXT_PUBLIC_ name.
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+      # Or, instead of the six above, the whole connection as one URI:
+      # - key: AURORA_DATABASE_URL
+      #   sync: false
 
-      # Settings > API > JWT Settings > JWT Secret. Sign-in is email-only, so
-      # the app mints its own PostgREST token with this secret.
-      - key: SUPABASE_JWT_SECRET
+      # ---------------------------------------------------------------------
+      # Uploaded files. An S3 bucket, reached with a plain access key since
+      # there is no role to assume from here.
+      # ---------------------------------------------------------------------
+      - key: FILES_BUCKET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
         sync: false
 
       # ---------------------------------------------------------------------
@@ -72,29 +85,3 @@ services:
       # an explicit invite from an Owner.
       - key: SCHOOL_EMAIL_DOMAIN
         value: kmids.ac.th
-
-      # ---------------------------------------------------------------------
-      # Aurora PostgreSQL — entirely optional; the portal runs on Supabase
-      # alone. Uncomment these only if you are also running the Aurora
-      # cluster described in README.md > Aurora PostgreSQL on AWS.
-      #
-      # Render has no OIDC exchange with AWS, so IAM auth over OIDC (the
-      # Vercel path in the README) is not available here. Use a password, or
-      # give the whole connection as one URI.
-      # ---------------------------------------------------------------------
-      # - key: RDS_HOSTNAME
-      #   sync: false
-      # - key: RDS_PORT
-      #   value: "5432"
-      # - key: RDS_DATABASE
-      #   sync: false
-      # - key: RDS_USERNAME
-      #   sync: false
-      # - key: RDS_PASSWORD
-      #   sync: false
-      # - key: AWS_REGION
-      #   value: ap-southeast-1
-      #
-      # Or, instead of the five above:
-      # - key: AURORA_DATABASE_URL
-      #   sync: false

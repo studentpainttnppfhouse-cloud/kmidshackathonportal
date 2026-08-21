@@ -1,16 +1,15 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { resolveAurora } from '@/lib/aws/config';
+import { resolveAurora, type AuroraAuth } from '@/lib/aws/config';
 import { SESSION_COOKIE } from '@/lib/auth/session';
 
 /**
  * `GET /api/health/db` — does the Aurora connection actually work?
  *
- * This is the "Hello World" step of the Vercel guide, written as something you
- * can keep: it names the variable that is missing rather than returning a
- * stack trace, so a first-time deploy tells you what to fix. It reports on the
- * Aurora cluster only — the portal itself still reads and writes through
- * Supabase.
+ * It names the variable that is missing rather than returning a stack trace,
+ * so a first-time deploy tells you what to fix. Aurora is now the only
+ * database the portal has, which makes this the whole answer to "is it up?" —
+ * render.yaml points Render's health check straight at it.
  *
  * It sits under the `/api/health` prefix that middleware already lets through
  * without a session, because the deploy you most need to diagnose is the one
@@ -18,8 +17,8 @@ import { SESSION_COOKIE } from '@/lib/auth/session';
  * the connection works but not what it connects to: the endpoint, database and
  * user are filled in only for a request that carries a session cookie. That is
  * the same cheap signal middleware uses — deliberately not `getSessionUser()`,
- * which would route this check through Supabase and make it useless exactly
- * when Supabase is what is broken.
+ * which would itself query the database and so make this check useless exactly
+ * when the database is what is broken.
  */
 
 // The AWS SDK and `pg` both need Node APIs, and a pool is pointless on an edge
@@ -68,7 +67,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      authentication: config.auth.kind === 'iam' ? 'IAM (Vercel OIDC, no password)' : 'password',
+      authentication: describeAuth(config.auth.kind),
       serverVersion: row?.version.split(' ').slice(0, 2).join(' ') ?? null,
       serverTime: row?.now ?? null,
       roundTripMs: Date.now() - startedAt,
@@ -104,7 +103,13 @@ export async function GET() {
  * Aurora's own errors are accurate but say nothing about which console page
  * fixes them.
  */
-function diagnose(message: string, authKind: 'iam' | 'password'): string {
+function describeAuth(kind: AuroraAuth['kind']): string {
+  if (kind === 'iam') return 'IAM (Vercel OIDC, no password)';
+  if (kind === 'password') return 'password';
+  return 'trust (local database)';
+}
+
+function diagnose(message: string, authKind: AuroraAuth['kind']): string {
   const m = message.toLowerCase();
 
   if (m.includes('timeout') || m.includes('etimedout') || m.includes('econnrefused')) {

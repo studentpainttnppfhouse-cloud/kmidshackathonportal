@@ -333,3 +333,34 @@ and `insert` on `form_responses`, for the public submission pages.
 If a new table has no policy, RLS denies everything by default — which is the
 right way round to fail, but produces a confusing empty screen. Check for
 that first when something new returns nothing.
+
+---
+
+## `collab_messages`
+
+In-flight edits for the document editor, not document state.
+
+Live editing merges through Yjs, and the peers need some way to pass update
+bytes to each other. Supabase Realtime was that channel; without it, an editor
+posts its updates here and polls `/api/collab/[documentId]` for everyone
+else's. Rows live for seconds — `app.prune_collab_messages()` clears anything
+older than five minutes, and the API route calls it whenever an editor joins.
+
+| Column | Notes |
+| --- | --- |
+| `id` | `bigserial`. Doubles as the cursor a peer polls from. |
+| `document_id` | The document being edited. Cascades on delete. |
+| `sender` | The Yjs client id, so a peer never re-applies its own update. |
+| `event` | `yjs-update`, `yjs-sync-request`, `yjs-sync-reply` or `awareness`. |
+| `payload` | The update, base64 inside JSON. |
+
+The saved copy of a document is still `documents.content`, written by the
+editor's autosave. Losing every row in this table costs nothing but a moment's
+divergence between two open editors.
+
+**Policies.** Readable when the document is — the policy defers to
+`documents_select` through a subquery, so it cannot drift from it. Insertable
+only when the document is *editable*, via `app.can_edit_doc()`, which mirrors
+`documents_update`: broadcasting an update is an edit, and a viewer with
+read-only access must not be able to push changes into someone else's editor.
+Updates and deletes are revoked outright.

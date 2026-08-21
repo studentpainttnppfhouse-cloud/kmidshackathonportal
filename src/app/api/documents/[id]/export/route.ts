@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { docxFromTiptap, htmlFromTiptap } from '@/lib/export/document-export';
 

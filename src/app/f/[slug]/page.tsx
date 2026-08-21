@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import { getSessionUser } from '@/lib/auth/session';
 import type { FormField, FormSettings } from '@/lib/forms';
 import { PublicForm } from '@/features/forms/public-form';

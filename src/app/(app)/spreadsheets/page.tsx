@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db';
 import { canCreateContent } from '@/lib/permissions';
 import { SheetLibrary, type LibrarySheet } from '@/features/spreadsheets/library';

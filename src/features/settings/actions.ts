@@ -3,8 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser, revokeAllSessions } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient, userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { SHIRT_SIZES } from '@/lib/types';
 

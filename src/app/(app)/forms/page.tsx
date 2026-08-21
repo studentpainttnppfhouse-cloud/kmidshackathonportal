@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db';
 import { canWriteDepartment } from '@/lib/permissions';
 import { FormsHub, type HubForm } from '@/features/forms/forms-hub';

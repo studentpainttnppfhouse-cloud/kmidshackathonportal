@@ -1,7 +1,7 @@
 import 'server-only';
 import { cookies, headers } from 'next/headers';
 import { createHash, randomBytes } from 'node:crypto';
-import { adminClient } from '@/lib/supabase/admin';
+import { adminClient } from '@/lib/pg/server';
 import type { AppUser, SessionUser, Tier } from '@/lib/types';
 import { isTier } from '@/lib/permissions';
 

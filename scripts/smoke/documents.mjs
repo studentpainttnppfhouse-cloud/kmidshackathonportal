@@ -24,9 +24,10 @@ ok('document library lists seeded docs',(await page.locator('text=Judging rubric
 await page.screenshot({path:`${OUT}/d1-library.png`});
 
 await page.click('text=Judging rubric v3');
-await page.waitForLoadState('networkidle');
-// The first dev compile of this route pulls in Tiptap and Yjs; wait for the
-// editor surface rather than guessing at a timeout.
+// Not `networkidle`: the editor polls the collaboration relay for as long as
+// it is open, so the network on this route never goes idle. Wait for the
+// editor surface itself, which is the thing being asserted anyway.
+await page.waitForLoadState('domcontentloaded');
 await page.waitForSelector('.tiptap', { timeout: 60000 }).catch(()=>{});
 await page.waitForTimeout(1500);
 ok('editor opens',(await page.locator('.tiptap').count())>0);
@@ -47,7 +48,8 @@ ok('autosave reports saved',(await page.locator('text=All changes saved').count(
 await page.screenshot({path:`${OUT}/d3-saved.png`});
 
 // reload and confirm it persisted
-await page.reload({waitUntil:'networkidle'});
+// Again, not `networkidle` — see above.
+await page.reload({waitUntil:'domcontentloaded'});
 await page.waitForSelector('.tiptap', { timeout: 60000 }).catch(()=>{});
 await page.waitForTimeout(2000);
 const after = await page.textContent('.tiptap').catch(()=> '');

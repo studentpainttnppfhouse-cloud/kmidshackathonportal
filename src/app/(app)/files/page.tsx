@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
-import { adminClient } from '@/lib/supabase/admin';
+import { userClient } from '@/lib/pg/server';
+import { signedUrlFor } from '@/lib/storage';
 import { getDepartments } from '@/lib/db';
 import { canCreateContent } from '@/lib/permissions';
 import { FilesTabs } from '@/features/files/files-tabs';
 import { FilesClient, type LibraryFile } from '@/features/files/files-client';
 import { BrandKit } from '@/features/files/brand-kit';
-import { STORAGE_BUCKET } from '@/features/files/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,17 +25,16 @@ export default async function FilesPage() {
       .limit(300),
   ]);
 
-  const storage = adminClient().storage.from(STORAGE_BUCKET);
-
-  const files: LibraryFile[] = (
-    (res.data ?? []) as unknown as Omit<LibraryFile, 'publicUrl'>[]
-  ).map((f) => ({
-    ...f,
-    tags: f.tags ?? [],
-    publicUrl: f.storage_path
-      ? storage.getPublicUrl(f.storage_path).data.publicUrl
-      : f.external_url,
-  }));
+  // Stored objects are private, so each row gets a short-lived signed link
+  // rather than a permanent public one. The page is force-dynamic, so these
+  // are minted fresh on every render and never go stale in a cache.
+  const files: LibraryFile[] = await Promise.all(
+    ((res.data ?? []) as unknown as Omit<LibraryFile, 'publicUrl'>[]).map(async (f) => ({
+      ...f,
+      tags: f.tags ?? [],
+      publicUrl: f.storage_path ? await signedUrlFor(f.storage_path) : f.external_url,
+    })),
+  );
 
   return (
     <FilesTabs

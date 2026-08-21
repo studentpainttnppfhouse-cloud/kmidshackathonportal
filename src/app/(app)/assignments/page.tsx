@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { getAssignments, getDepartments, getDirectory, isOverdue } from '@/lib/db';
 import { canApprove, canCreateAssignment, isReadOnly } from '@/lib/permissions';
 import { AssignmentsClient } from '@/features/assignments/assignments-client';

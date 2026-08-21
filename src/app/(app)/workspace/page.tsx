@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { getAnnouncements, getAssignments, getDepartments, getDirectory } from '@/lib/db';
 import { canPublishAnnouncement } from '@/lib/permissions';
 import {

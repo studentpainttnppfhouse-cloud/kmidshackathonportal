@@ -30,7 +30,7 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
 
         <h1 className="text-[21px] font-extrabold tracking-[-0.02em]">Finish setting up</h1>
         <p className="mb-6 mt-2 text-muted-2">
-          Hackathon Studio is deployed, but it has no Supabase project to talk to yet. Set the{' '}
+          Hackathon Studio is deployed, but it cannot reach its database yet. Set the{' '}
           {problems.length === 1 ? 'variable' : `${problems.length} variables`} below, then
           redeploy.
         </p>
@@ -66,18 +66,23 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
           {onVercel ? (
             <ol className="list-decimal space-y-1 pl-4 text-[12.5px] text-muted-2">
               <li>
-                Easiest path: Project → <strong>Storage</strong> → add <strong>Supabase</strong>{' '}
-                from the Marketplace. It provisions the project and sets most of these for you.
+                Install the <strong>AWS</strong> integration on this project. It sets{' '}
+                <code className="font-mono">AWS_ROLE_ARN</code> and{' '}
+                <code className="font-mono">AWS_REGION</code>, which is what lets the deployment
+                reach Aurora and S3 without a stored password.
               </li>
               <li>
-                Then fill any gap by hand under Settings → Environment Variables, for Production,
-                Preview, and Development. <code className="font-mono">SUPABASE_JWT_SECRET</code> and
-                the <code className="font-mono">OWNER_</code> addresses are not provisioned for you.
+                Add the rest by hand under Settings → Environment Variables, for Production,
+                Preview and Development — the cluster endpoint, the database name, the database
+                user, the bucket, and the <code className="font-mono">OWNER_</code> addresses.
               </li>
               <li>
-                Deployments → ⋯ → <strong>Redeploy</strong>. The{' '}
-                <code className="font-mono">NEXT_PUBLIC_</code> values are baked into the build, so
-                saving them alone does not fix a deployment that already exists.
+                Run <code className="font-mono">npm run db:aurora</code> once, from a machine that
+                can reach the cluster, to create the schema and the roles.
+              </li>
+              <li>
+                Deployments → ⋯ → <strong>Redeploy</strong>. Saving a variable does not change a
+                deployment that already exists.
               </li>
             </ol>
           ) : (
@@ -87,8 +92,8 @@ export function SetupRequired({ problems }: { problems: EnvProblem[] }) {
                 <code className="font-mono">.env.local</code> and fill it in.
               </li>
               <li>
-                Run <code className="font-mono">npm run db:setup</code> to create the schema and the
-                Owner accounts.
+                Run <code className="font-mono">npm run db:aurora</code> to create the schema, the
+                roles and the Owner accounts.
               </li>
               <li>Restart the dev server.</li>
             </ol>

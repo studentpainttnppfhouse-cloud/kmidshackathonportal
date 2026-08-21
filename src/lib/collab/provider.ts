@@ -21,6 +21,20 @@ export interface Transport {
   /** Resolves true once joined. False means collaboration is unavailable. */
   connect(): Promise<boolean>;
   disconnect(): void;
+  /**
+   * How long to wait for a peer's sync reply before concluding this client is
+   * the first one in. A transport that polls needs longer than one that gets
+   * a websocket push; guessing too low makes both editors seed the document
+   * and doubles its content.
+   */
+  readonly syncGraceMs?: number;
+  /**
+   * Whether the transport has been told this client should seed the document,
+   * or null when it cannot tell. `true` lets a joiner start immediately
+   * instead of sitting out the sync grace, which is the common case of opening
+   * a document nobody else has.
+   */
+  isSeeder?(): boolean | null;
 }
 
 export interface CollabUser {
@@ -33,7 +47,10 @@ const EVENT_SYNC_REQUEST = 'yjs-sync-request';
 const EVENT_SYNC_REPLY = 'yjs-sync-reply';
 const EVENT_AWARENESS = 'awareness';
 
-/** How long a joiner waits for a peer before assuming it is the first one in. */
+/**
+ * Default wait for a peer before assuming this client is the first one in.
+ * A transport may ask for longer via `syncGraceMs`.
+ */
 export const SYNC_GRACE_MS = 600;
 
 export class CollabProvider {
@@ -80,6 +97,13 @@ export class CollabProvider {
     this.connected = await this.transport.connect();
     if (!this.connected) return { connected: false, isFirst: true };
 
+    // The relay has named this client the seeder, so there is no snapshot
+    // coming and nothing to wait for. A `false` answer is not trusted the same
+    // way: the named seeder may have closed its tab a moment ago, and the
+    // handshake below still falls back to seeding if nobody replies.
+    if (this.transport.isSeeder?.() === true) return { connected: true, isFirst: true };
+
+    const grace = this.transport.syncGraceMs ?? SYNC_GRACE_MS;
     const first = await new Promise<boolean>((resolve) => {
       this.syncResolve = resolve;
       this.transport.send(EVENT_SYNC_REQUEST, {});
@@ -88,7 +112,7 @@ export class CollabProvider {
           this.syncResolve(!this.sawPeer);
           this.syncResolve = null;
         }
-      }, SYNC_GRACE_MS);
+      }, grace);
     });
 
     return { connected: true, isFirst: first };

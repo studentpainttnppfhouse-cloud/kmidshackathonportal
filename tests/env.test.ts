@@ -1,30 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { envProblems } from '@/lib/env';
 
+/**
+ * Every name the setup screen reads, across all three config modules. Listed
+ * here so the fixture can clear names that happen to be set in the real
+ * environment — a stray AWS_REGION on a developer's machine would otherwise
+ * make these pass for the wrong reason.
+ */
 const KEYS = [
-  'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'SUPABASE_JWT_SECRET',
   'OWNER_EMAIL',
   'OWNER_BACKUP_EMAIL',
   'SCHOOL_EMAIL_DOMAIN',
-  // The names a Vercel Marketplace Supabase project arrives under.
-  'SUPABASE_URL',
-  'SUPABASE_ANON_KEY',
-  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
-  'SUPABASE_PUBLISHABLE_KEY',
-  'SUPABASE_SECRET_KEY',
+  // Aurora
+  'RDS_HOSTNAME', 'RDS_HOST', 'AURORA_HOST', 'PGHOST', 'POSTGRES_HOST',
+  'RDS_PORT', 'PGPORT', 'POSTGRES_PORT',
+  'RDS_DATABASE', 'RDS_DB_NAME', 'PGDATABASE', 'POSTGRES_DATABASE',
+  'RDS_USERNAME', 'RDS_USER', 'PGUSER', 'POSTGRES_USER',
+  'AWS_REGION', 'AWS_DEFAULT_REGION', 'RDS_REGION',
+  'AWS_ROLE_ARN', 'RDS_ROLE_ARN',
+  'RDS_PASSWORD', 'PGPASSWORD', 'POSTGRES_PASSWORD',
+  'AURORA_DATABASE_URL', 'RDS_DATABASE_URL',
+  // Object storage
+  'FILES_BUCKET', 'S3_BUCKET', 'AWS_S3_BUCKET', 'STORAGE_BUCKET',
+  'S3_ENDPOINT', 'AWS_ENDPOINT_URL_S3', 'S3_ROLE_ARN',
 ] as const;
 
 const COMPLETE: Record<string, string> = {
-  NEXT_PUBLIC_SUPABASE_URL: 'https://demo.supabase.co',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
-  SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
-  SUPABASE_JWT_SECRET: 'a-secret-of-at-least-32-characters-long',
   OWNER_EMAIL: 'owner@kmids.ac.th',
   OWNER_BACKUP_EMAIL: 'backup@kmids.ac.th',
   SCHOOL_EMAIL_DOMAIN: 'kmids.ac.th',
+  RDS_HOSTNAME: 'hs.cluster-abc.ap-southeast-1.rds.amazonaws.com',
+  RDS_DATABASE: 'hackathon',
+  RDS_USERNAME: 'portal',
+  AWS_REGION: 'ap-southeast-1',
+  AWS_ROLE_ARN: 'arn:aws:iam::123456789012:role/vercel-hackathon-studio',
+  FILES_BUCKET: 'hackathon-studio-files',
 };
 
 const saved: Record<string, string | undefined> = {};
@@ -55,93 +65,95 @@ describe('envProblems', () => {
     expect(envProblems()).toEqual([]);
   });
 
+  it('says nothing about Supabase, which the app no longer uses', () => {
+    for (const k of KEYS) delete process.env[k];
+    const text = JSON.stringify(envProblems()).toLowerCase();
+    expect(text).not.toContain('supabase');
+  });
+
   it('names every variable that is missing, so a bad deploy is self-explaining', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.RDS_HOSTNAME;
+    delete process.env.FILES_BUCKET;
     delete process.env.OWNER_EMAIL;
 
-    expect(keys()).toEqual([
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'SUPABASE_SERVICE_ROLE_KEY',
-      'OWNER_EMAIL',
-    ]);
+    expect(keys()).toEqual(['RDS_HOSTNAME', 'FILES_BUCKET', 'OWNER_EMAIL']);
   });
 
-  it('says "not set" for an absent variable and why for a malformed one', () => {
-    delete process.env.OWNER_EMAIL;
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'demo.supabase.co'; // no scheme
-
-    const problems = envProblems();
-    expect(problems.find((p) => p.key === 'OWNER_EMAIL')?.reason).toBe('not set');
-    expect(problems.find((p) => p.key === 'NEXT_PUBLIC_SUPABASE_URL')?.reason).not.toBe('not set');
+  it('reports the database first, since nothing else matters without it', () => {
+    for (const k of KEYS) delete process.env[k];
+    expect(keys()[0]).toBe('RDS_HOSTNAME');
   });
 
-  it('catches a JWT secret that is present but too short to sign with', () => {
-    process.env.SUPABASE_JWT_SECRET = 'short';
-    expect(keys()).toEqual(['SUPABASE_JWT_SECRET']);
+  it('gives each problem a place to find the value', () => {
+    delete process.env.FILES_BUCKET;
+    const problem = envProblems().find((p) => p.key === 'FILES_BUCKET');
+    expect(problem?.source).toContain('bucket');
+    expect(problem?.reason).toBe('not set');
   });
 
-  it('lists each variable once, however many rules it breaks', () => {
+  it('lists the other names a value is accepted under', () => {
+    delete process.env.FILES_BUCKET;
+    const problem = envProblems().find((p) => p.key === 'FILES_BUCKET');
+    expect(problem?.alsoAccepts).toContain('S3_BUCKET');
+  });
+
+  it('treats an empty string as not set', () => {
+    process.env.OWNER_EMAIL = '';
+    expect(keys()).toContain('OWNER_EMAIL');
+  });
+
+  it('rejects an owner address that is not an email', () => {
     process.env.OWNER_EMAIL = 'not-an-email';
-    expect(keys().filter((k) => k === 'OWNER_EMAIL')).toHaveLength(1);
+    const problem = envProblems().find((p) => p.key === 'OWNER_EMAIL');
+    expect(problem).toBeDefined();
+    expect(problem?.reason).not.toBe('not set');
   });
 
-  it('treats the two optional variables as optional', () => {
+  it('does not require the backup owner to be set', () => {
     delete process.env.OWNER_BACKUP_EMAIL;
-    delete process.env.SCHOOL_EMAIL_DOMAIN;
-    expect(envProblems()).toEqual([]);
+    expect(keys()).not.toContain('OWNER_BACKUP_EMAIL');
   });
 
-  it('points at where each value comes from', () => {
-    delete process.env.SUPABASE_JWT_SECRET;
-    expect(envProblems()[0]?.source).toContain('JWT Secret');
+  it('defaults the school domain rather than demanding it', () => {
+    delete process.env.SCHOOL_EMAIL_DOMAIN;
+    expect(keys()).not.toContain('SCHOOL_EMAIL_DOMAIN');
   });
 });
 
-describe('Vercel Marketplace variable names', () => {
-  it('accepts the unprefixed names the integration injects', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    process.env.SUPABASE_URL = 'https://demo.supabase.co';
-    process.env.SUPABASE_ANON_KEY = 'anon-key';
-    process.env.SUPABASE_SECRET_KEY = 'secret-key';
+describe('variable names injected by the AWS and Postgres integrations', () => {
+  it('accepts a whole connection URI in place of the separate values', () => {
+    delete process.env.RDS_HOSTNAME;
+    delete process.env.RDS_DATABASE;
+    delete process.env.RDS_USERNAME;
+    process.env.AURORA_DATABASE_URL = 'postgresql://portal@hs.rds.amazonaws.com:5432/hackathon';
 
-    expect(envProblems()).toEqual([]);
+    expect(keys()).toEqual([]);
   });
 
-  it('accepts the newer publishable/secret key vocabulary', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_abc';
-    process.env.SUPABASE_SECRET_KEY = 'sb_secret_abc';
+  it('accepts the PG* names a local Postgres uses', () => {
+    delete process.env.RDS_HOSTNAME;
+    delete process.env.RDS_DATABASE;
+    delete process.env.RDS_USERNAME;
+    delete process.env.AWS_ROLE_ARN;
+    process.env.PGHOST = 'localhost';
+    process.env.PGDATABASE = 'hackathon';
+    process.env.PGUSER = 'postgres';
+    process.env.PGPASSWORD = 'secret';
 
-    expect(envProblems()).toEqual([]);
+    expect(keys()).toEqual([]);
   });
 
-  it('prefers the canonical name when both are set', async () => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://canonical.supabase.co';
-    process.env.SUPABASE_URL = 'https://alias.supabase.co';
+  it('takes a password when there is no IAM role to assume', () => {
+    delete process.env.AWS_ROLE_ARN;
+    expect(keys()).toContain('AWS_ROLE_ARN');
 
-    const { publicSupabaseConfig } = await import('@/lib/env');
-    expect(publicSupabaseConfig().url).toBe('https://canonical.supabase.co');
+    process.env.RDS_PASSWORD = 'secret';
+    expect(keys()).toEqual([]);
   });
 
-  it('ignores an alias set to the empty string', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    process.env.SUPABASE_URL = '';
-
-    expect(envProblems().map((p) => p.key)).toEqual(['NEXT_PUBLIC_SUPABASE_URL']);
-  });
-
-  it('tells the setup screen which other names it would have accepted', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    expect(envProblems()[0]?.alsoAccepts).toEqual(['SUPABASE_URL']);
-  });
-
-  it('offers no alias for the JWT secret, which must be copied by hand', () => {
-    delete process.env.SUPABASE_JWT_SECRET;
-    expect(envProblems()[0]?.alsoAccepts).toEqual([]);
-    expect(envProblems()[0]?.source).toContain('by hand');
+  it('accepts the bucket under the names other integrations inject', () => {
+    delete process.env.FILES_BUCKET;
+    process.env.AWS_S3_BUCKET = 'hackathon-studio-files';
+    expect(keys()).toEqual([]);
   });
 });

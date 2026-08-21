@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
-import { userClient } from '@/lib/supabase/user';
+import { userClient } from '@/lib/pg/server';
 import { canEditOwned, isReadOnly } from '@/lib/permissions';
 import { emptySheet, type SheetData } from '@/lib/sheet';
 import { SheetGrid } from '@/features/spreadsheets/grid';
