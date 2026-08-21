@@ -2,8 +2,6 @@ import 'server-only';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pg from 'pg';
-import { Signer } from '@aws-sdk/rds-signer';
-import { awsCredentialsProvider } from '@vercel/functions/oidc';
 import { isLocalHost, resolveAurora, type AuroraConfig } from '@/lib/aws/config';
 import { registerTypeParsers } from '@/lib/pg/types';
 
@@ -56,6 +54,15 @@ let tokenCache: { value: string; expiresAt: number } | null = null;
 
 async function iamAuthToken(config: AuroraConfig, roleArn: string): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.value;
+
+  // Imported here rather than at the top of the file: IAM authentication is
+  // one of three ways to connect, and a deployment that hands over a
+  // connection URI — which is most of them — should not have to load the AWS
+  // SDK, or have it installed at all, to open a connection.
+  const [{ Signer }, { awsCredentialsProvider }] = await Promise.all([
+    import('@aws-sdk/rds-signer'),
+    import('@vercel/functions/oidc'),
+  ]);
 
   const signer = new Signer({
     hostname: config.host,
@@ -154,7 +161,7 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
  * This is the whole reason the permission model survives the move off
  * Supabase. PostgREST authorises a request by switching to the `authenticated`
  * role and putting the JWT claims in `request.jwt.claims`; every policy in
- * `supabase/migrations` reads them through `app.uid()`. Doing the same two
+ * `db/migrations` reads them through `app.uid()`. Doing the same two
  * statements here means those policies — not this process — keep deciding what
  * each user can see.
  *

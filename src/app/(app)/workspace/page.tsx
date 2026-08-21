@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/pg/server';
-import { getAnnouncements, getAssignments, getDepartments, getDirectory } from '@/lib/db';
+import { getAnnouncements, getAssignments, getDepartments, getDirectory } from '@/lib/db/reads';
 import { canPublishAnnouncement } from '@/lib/permissions';
 import {
   WorkspaceClient, type WorkspaceDoc, type WorkspaceFile,

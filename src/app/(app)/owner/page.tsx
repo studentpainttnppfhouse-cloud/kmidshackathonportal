@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { adminClient } from '@/lib/pg/server';
-import { getDepartments } from '@/lib/db';
+import { getDepartments } from '@/lib/db/reads';
 import { canManageUsers } from '@/lib/permissions';
 import { OwnerConsole } from '@/features/owner/owner-console';
 import type { OwnerUser } from '@/features/owner/users-table';

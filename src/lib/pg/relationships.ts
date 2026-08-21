@@ -7,7 +7,7 @@
  * is exactly the kind of drift that turns into a permissions bug, and a table
  * checked into the repo can be read in review.
  *
- * Generated from supabase/migrations — regenerate with `npm run db:relations`
+ * Generated from db/migrations — regenerate with `npm run db:relations`
  * whenever a foreign key is added or removed.
  */
 
@@ -73,6 +73,9 @@ export const FOREIGN_KEYS: ForeignKeys = {
   },
   event_items: {
     owner_id: ['users', 'id'],
+  },
+  file_blobs: {
+    file_id: ['files', 'id'],
   },
   files: {
     department_id: ['departments', 'id'],

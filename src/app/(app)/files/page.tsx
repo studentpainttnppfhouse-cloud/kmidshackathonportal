@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/pg/server';
-import { signedUrlFor } from '@/lib/storage';
-import { getDepartments } from '@/lib/db';
+import { getDepartments } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import { FilesTabs } from '@/features/files/files-tabs';
 import { FilesClient, type LibraryFile } from '@/features/files/files-client';
 import { BrandKit } from '@/features/files/brand-kit';
+import { downloadPath } from '@/lib/files/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,16 +25,16 @@ export default async function FilesPage() {
       .limit(300),
   ]);
 
-  // Stored objects are private, so each row gets a short-lived signed link
-  // rather than a permanent public one. The page is force-dynamic, so these
-  // are minted fresh on every render and never go stale in a cache.
-  const files: LibraryFile[] = await Promise.all(
-    ((res.data ?? []) as unknown as Omit<LibraryFile, 'publicUrl'>[]).map(async (f) => ({
-      ...f,
-      tags: f.tags ?? [],
-      publicUrl: f.storage_path ? await signedUrlFor(f.storage_path) : f.external_url,
-    })),
-  );
+  // An uploaded file is served by the app itself, so that the department rules
+  // apply to the bytes and not only to this listing. An external link is left
+  // exactly as it was given.
+  const files: LibraryFile[] = (
+    (res.data ?? []) as unknown as Omit<LibraryFile, 'publicUrl'>[]
+  ).map((f) => ({
+    ...f,
+    tags: f.tags ?? [],
+    publicUrl: f.storage_path ? downloadPath(f.id) : f.external_url,
+  }));
 
   return (
     <FilesTabs

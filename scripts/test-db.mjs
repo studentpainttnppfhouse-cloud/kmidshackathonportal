@@ -15,8 +15,8 @@ import { join } from 'node:path';
 import pg from 'pg';
 
 const URL_ = process.env.TEST_DATABASE_URL ?? 'postgresql://postgres@localhost:5432/hackathon_test';
-const MIGRATIONS = 'supabase/migrations';
-const SEED = 'supabase/seed/demo_data.sql';
+const MIGRATIONS = 'db/migrations';
+const SEED = 'db/seed/demo_data.sql';
 
 const url = new URL(URL_);
 const name = url.pathname.slice(1);

@@ -76,11 +76,20 @@ describe('resolveAurora', () => {
     expect(config?.database).toBe('hackathon_staging');
   });
 
-  it('names every missing variable, not just the first', () => {
+  it('asks for one connection URI when nothing at all is set', () => {
+    // Naming five separate variables to someone who has set none of them is
+    // noise: a linked PostgreSQL instance hands over a whole URI, and that is
+    // the shortest path to a working deploy.
     const { config, problems } = resolveAurora({});
     expect(config).toBeNull();
+    expect(problems.map((p) => p.key)).toEqual(['DATABASE_URL']);
+    expect(problems[0]!.alsoAccepts).toContain('POSTGRES_URL');
+  });
+
+  it('names every missing variable once some of them are set', () => {
+    const { config, problems } = resolveAurora({ RDS_HOSTNAME: 'db.example.com' });
+    expect(config).toBeNull();
     expect(problems.map((p) => p.key)).toEqual([
-      'RDS_HOSTNAME',
       'RDS_DATABASE',
       'RDS_USERNAME',
       'AWS_ROLE_ARN',
@@ -88,7 +97,7 @@ describe('resolveAurora', () => {
   });
 
   it('tells you the other names a value is accepted under', () => {
-    const { problems } = resolveAurora({});
+    const { problems } = resolveAurora({ RDS_USERNAME: 'portal' });
     const host = problems.find((p) => p.key === 'RDS_HOSTNAME');
     expect(host?.alsoAccepts).toContain('PGHOST');
     expect(host?.source).toMatch(/Endpoint/);

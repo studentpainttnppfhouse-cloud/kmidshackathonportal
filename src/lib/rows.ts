@@ -1,7 +1,7 @@
 /**
  * Row shapes and pure helpers.
  *
- * Deliberately free of `server-only` and of any Supabase import, because the
+ * Deliberately free of `server-only` and of any database import, because the
  * board, list, calendar and drawer are all client components and need these
  * types and predicates too. The functions that actually talk to the database
  * live in src/lib/db.ts.

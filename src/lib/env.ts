@@ -1,19 +1,23 @@
 import { z } from 'zod';
 import { resolveAurora, type AuroraProblem } from '@/lib/aws/config';
-import { resolveStorage, type StorageProblem } from '@/lib/storage/config';
 
 /**
- * Environment contract. Parsed once, eagerly, so a missing variable fails at
- * boot with a readable message instead of at 7 AM on event day.
+ * The environment contract.
  *
- * The database and bucket settings are not repeated here — `aws/config.ts` and
- * `storage/config.ts` own those, because both are also read from scripts that
- * run outside Next. This module owns the handful of values that are purely the
- * app's, and `envProblems()` gathers all three into one list for the setup
- * screen.
+ * Deliberately short: the portal needs a database to talk to and it needs to
+ * know who the Owners are. Everything else has a sensible default.
+ *
+ * `env()` throws when something required is missing, but `envProblems()`
+ * reports the same check without throwing, so a diagnostic can name the
+ * variable and say where its value comes from. `/api/health/db` is what reads
+ * it — deliberately a single endpoint rather than a gate above every route,
+ * because a gate that is wrong about one alias hides an app that works.
+ *
+ * The connection itself lives in `aws/config.ts`, which the setup script reads
+ * too; this module owns only the values that are purely the app's.
  */
 const schema = z.object({
-  /** First Owner. Created at T4 on first sign-in. */
+  /** First Owner. Becomes T4 on first sign-in. */
   OWNER_EMAIL: z.string().email(),
   /** Second Owner — two must always exist so one graduating student is not a
    *  single point of failure. */
@@ -24,7 +28,6 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
-/** Where each value comes from, shown on the setup screen. */
 const SOURCES: Record<string, string> = {
   OWNER_EMAIL: 'The first Owner’s email address, e.g. owner@kmids.ac.th',
   OWNER_BACKUP_EMAIL: 'The second Owner’s email address',
@@ -35,7 +38,7 @@ export type EnvProblem = {
   key: string;
   source: string;
   reason: string;
-  /** Other names this value is accepted under, so the screen can say so. */
+  /** Other names this value is accepted under, so a diagnostic can say so. */
   alsoAccepts: string[];
 };
 
@@ -68,8 +71,8 @@ function ownProblems(): EnvProblem[] {
   return problems;
 }
 
-/** The two config modules report in the same shape; this just relabels them. */
-function adopt(problems: (AuroraProblem | StorageProblem)[]): EnvProblem[] {
+/** The connection module reports in the same shape; this just relabels it. */
+function adopt(problems: AuroraProblem[]): EnvProblem[] {
   return problems.map((p) => ({
     key: p.key,
     source: p.source,
@@ -79,19 +82,11 @@ function adopt(problems: (AuroraProblem | StorageProblem)[]): EnvProblem[] {
 }
 
 /**
- * Everything a deployment is still missing, reported rather than thrown — so
- * the app can render a screen naming the variables instead of a bare digest.
- * A misconfigured deploy is the one failure a first-time deployer will hit,
- * and §3 of the brief says never show a generic error.
- *
+ * Everything a deployment is still missing, reported rather than thrown.
  * Database first: without it nothing else matters.
  */
 export function envProblems(): EnvProblem[] {
-  return [
-    ...adopt(resolveAurora().problems),
-    ...adopt(resolveStorage().problems),
-    ...ownProblems(),
-  ];
+  return [...adopt(resolveAurora().problems), ...ownProblems()];
 }
 
 let cached: Env | null = null;

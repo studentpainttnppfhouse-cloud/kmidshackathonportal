@@ -15,7 +15,7 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const MIGRATIONS = 'supabase/migrations';
+const MIGRATIONS = 'db/migrations';
 const TARGET = 'src/lib/pg/relationships.ts';
 const START = 'export const FOREIGN_KEYS: ForeignKeys = {';
 const END = '};';

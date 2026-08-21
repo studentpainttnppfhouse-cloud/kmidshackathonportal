@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/pg/server';
-import { removeObjects, uploadObject } from '@/lib/storage';
+import { deleteBlob, putBlob } from '@/lib/files/storage';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
 import { MAX_FILE_BYTES } from './constants';
@@ -55,27 +55,17 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
   if (!parsed.success) return { ok: false, error: 'Check the upload form.' };
 
   const v = parsed.data;
-  const key = `${v.department_id ?? 'general'}/${crypto.randomUUID()}-${sanitise(file.name)}`;
 
-  // The object goes up with the deployment's own credentials; the row insert
-  // below goes through the user's session, so RLS still decides whether they
-  // may file it in that department.
-  const upload = await uploadObject(
-    key,
-    new Uint8Array(await file.arrayBuffer()),
-    file.type || 'application/octet-stream',
-  );
-
-  if (upload.error) {
-    return { ok: false, error: `Upload failed: ${upload.error.message}` };
-  }
-
+  // The row goes in first, through the user's own role, so RLS decides whether
+  // they may file anything in that department before a single byte is stored.
+  // `storage_path` is what satisfies the "a file has a source" constraint and
+  // marks this as an upload rather than an external link.
   const db = await userClient(user.id);
   const { data, error } = await db
     .from('files')
     .insert({
       name: v.name,
-      storage_path: key,
+      storage_path: sanitise(file.name),
       mime: file.type || null,
       size: file.size,
       department_id: v.department_id,
@@ -87,14 +77,21 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
     .maybeSingle();
 
   if (error || !data) {
-    // Do not leave an orphaned object behind if the row was refused.
-    await removeObjects([key]);
     return {
       ok: false,
       error: error?.message.includes('row-level security')
         ? 'You do not have permission to upload to that department.'
         : error?.message ?? 'Upload was rejected.',
     };
+  }
+
+  try {
+    await putBlob(data.id, Buffer.from(await file.arrayBuffer()));
+  } catch (e) {
+    // Never leave a library entry pointing at contents that were not stored.
+    await deleteBlob(data.id);
+    await db.from('files').delete().eq('id', data.id);
+    return { ok: false, error: (e as Error).message };
   }
 
   await audit({

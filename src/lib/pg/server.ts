@@ -9,7 +9,7 @@ import { createClient, type Executor, type PgClient } from './client';
  * The difference between them is only ever which connection context the
  * statement runs in — never a check written in TypeScript. `userClient` and
  * `anonClient` run inside a transaction that switches role and publishes the
- * request's claims, so the policies in supabase/migrations do the deciding;
+ * request's claims, so the policies in db/migrations do the deciding;
  * `adminClient` runs as the connection's own role, which owns the tables and
  * therefore bypasses RLS the way `service_role` used to.
  */

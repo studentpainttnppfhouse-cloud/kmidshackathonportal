@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/pg/server';
-import { getDepartments } from '@/lib/db';
+import { getDepartments } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import { DocumentLibrary, type LibraryDoc } from '@/features/documents/library';
 

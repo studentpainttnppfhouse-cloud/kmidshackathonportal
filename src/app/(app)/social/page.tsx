@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/pg/server';
-import { getDepartments, getDirectory } from '@/lib/db';
+import { getDepartments, getDirectory } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import {
   SocialClient, type ContentItem, type SocialAccount,

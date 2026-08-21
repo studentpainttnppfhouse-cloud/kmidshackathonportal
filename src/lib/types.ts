@@ -1,4 +1,4 @@
-/** Shared domain types. Mirrors the database schema in supabase/migrations. */
+/** Shared domain types. Mirrors the database schema in db/migrations. */
 
 export const TIERS = ['T0', 'T1', 'T2', 'T3', 'T4'] as const;
 export type Tier = (typeof TIERS)[number];

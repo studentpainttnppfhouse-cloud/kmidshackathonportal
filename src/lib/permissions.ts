@@ -1,6 +1,6 @@
 /**
- * Tier logic, mirrored from the RLS policies in
- * the policies written alongside each table in supabase/migrations/.
+ * Tier logic, mirrored from the policies written alongside each table in
+ * db/migrations/.
  *
  * Nothing here is a security boundary — the database is. These helpers exist
  * so the UI does not offer buttons that the database is going to reject.

@@ -3,7 +3,9 @@ import { getSessionUser } from '@/lib/auth/session';
 import { adminClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { canExportAll } from '@/lib/permissions';
-import { listObjects, storageLocation } from '@/lib/storage';
+
+/** `pg` needs Node APIs, so this cannot run on the edge runtime. */
+export const runtime = 'nodejs';
 
 /**
  * Full export (§2.6) — every table as JSON plus a manifest of stored files,
@@ -35,23 +37,32 @@ export async function GET() {
     data[table] = error ? { error: error.message } : rows;
   }
 
-  // A storage listing must not sink the whole export — the tables are the part
-  // that cannot be reconstructed.
-  const bucket = storageLocation();
-  let objects: Awaited<ReturnType<typeof listObjects>> = [];
-  let objectsError: string | null = null;
-  try {
-    objects = await listObjects('', 1000);
-  } catch (error) {
-    objectsError = (error as Error).message;
-  }
+  // A manifest of the uploads rather than the uploads themselves: the bytes
+  // live in `file_blobs` and would turn a readable JSON export into hundreds
+  // of megabytes of base64. Each entry says where to fetch its contents.
+  const { data: uploads } = await db
+    .from('files')
+    .select('id, name, mime, size, storage_path')
+    .is('deleted_at', null)
+    .limit(5000);
 
   const payload = {
     exportedAt: new Date().toISOString(),
     exportedBy: user.email,
-    schemaVersion: '0090',
+    schemaVersion: '0100',
     tables: data,
-    storage: { bucket, objects, ...(objectsError ? { error: objectsError } : {}) },
+    storage: {
+      kind: 'postgres:file_blobs',
+      objects: (uploads ?? [])
+        .filter((f) => f.storage_path)
+        .map((f) => ({
+          id: f.id,
+          name: f.name,
+          mime: f.mime,
+          size: f.size,
+          downloadPath: `/api/files/${f.id}`,
+        })),
+    },
   };
 
   await audit({

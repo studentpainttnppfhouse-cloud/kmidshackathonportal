@@ -50,11 +50,22 @@ const ALIASES = {
   region: ['AWS_REGION', 'AWS_DEFAULT_REGION', 'RDS_REGION'],
   roleArn: ['AWS_ROLE_ARN', 'RDS_ROLE_ARN'],
   password: ['RDS_PASSWORD', 'PGPASSWORD', 'POSTGRES_PASSWORD'],
-  url: ['AURORA_DATABASE_URL', 'RDS_DATABASE_URL'],
+  // DATABASE_URL first: it is what a linked Render (or Neon, or Heroku)
+  // PostgreSQL instance sets, and giving the whole connection as one URI is
+  // the shortest path to a working deploy.
+  url: [
+    'DATABASE_URL',
+    'AURORA_DATABASE_URL',
+    'RDS_DATABASE_URL',
+    'POSTGRES_URL',
+    'POSTGRESQL_URL',
+    'PG_CONNECTION_STRING',
+  ],
 } as const;
 
 /** Human-readable location of each value, shown when one is missing. */
 const SOURCES: Record<string, string> = {
+  url: 'The whole connection as one URI — what a linked PostgreSQL instance sets',
   host: 'RDS console > your cluster > Endpoint (the writer endpoint)',
   database: 'RDS console > your cluster > Configuration > DB name',
   user: 'The database user you created and granted rds_iam to',
@@ -152,6 +163,22 @@ export function resolveAurora(
       alsoAccepts: [...ALIASES[key]].slice(1),
     });
   };
+
+  // A single URI is the common case now, so say so plainly when nothing at
+  // all is set rather than naming five separate variables.
+  if (!host && !database && !user && !rawUrl) {
+    return {
+      config: null,
+      problems: [
+        {
+          key: 'DATABASE_URL',
+          source: SOURCES.url ?? '',
+          reason: 'not set',
+          alsoAccepts: [...ALIASES.url].slice(1),
+        },
+      ],
+    };
+  }
 
   require_('host', host);
   require_('database', database);

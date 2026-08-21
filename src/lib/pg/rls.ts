@@ -3,7 +3,7 @@
  *
  * PostgREST authorised a request by switching to the `authenticated` role and
  * publishing the JWT claims as `request.jwt.claims`; every policy in
- * supabase/migrations reads them back through `app.uid()`. Reproducing exactly
+ * db/migrations reads them back through `app.uid()`. Reproducing exactly
  * that here is what lets the whole permission model survive the move off
  * Supabase untouched — the policies, not this process, still decide what each
  * user can see.

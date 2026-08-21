@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import {
   daysToEvent, getAnnouncements, getAssignments, getDepartments,
   isOverdue, summariseByDepartment,
-} from '@/lib/db';
+} from '@/lib/db/reads';
 import { atLeast } from '@/lib/permissions';
 import { adminClient } from '@/lib/pg/server';
 import { relativeTime } from '@/lib/format';

@@ -1,87 +1,42 @@
-# Render Blueprint for the KMIDS Hackathon 2027 staff portal.
+# Render blueprint for Hackathon Studio.
 #
-# To use it: push this file, then create a new Blueprint at
-# https://dashboard.render.com/blueprints and point it at this repository.
-# Render reads the service below and asks you for every value marked
-# `sync: false` before the first deploy.
+# Deploying from this file: New → Blueprint, point Render at this repository,
+# then fill in the three variables marked `sync: false` when it asks. Nothing
+# here provisions a database — the portal connects to the PostgreSQL instance
+# you already have, and DATABASE_URL is what points it there.
 #
-# The README describes deploying to Vercel; this is the same app on Render.
-# Nothing here is Render-specific inside the code — the portal is a stock
-# Next.js server, so `next build` / `next start` is all it needs.
-
+# The equivalent by hand, if you would rather not use a blueprint: New → Web
+# Service, runtime Node, build `npm ci && npm run build`, start `npm start`,
+# then set the same environment variables under Environment.
 services:
   - type: web
-    name: kmids-hackathon-portal
+    name: hackathon-studio
     runtime: node
-    # Bangkok is closer to Singapore than to any other Render region.
-    region: singapore
     plan: starter
-    # No `branch:` — Render tracks the repository's default branch, whatever
-    # it is named. Set it explicitly if you want deploys from another branch.
+    # `npm ci` rather than `npm install`, so a deploy builds the versions in
+    # package-lock.json and not whatever resolved that morning.
     buildCommand: npm ci && npm run build
-    # `next start` binds to $PORT, which Render sets for us.
-    startCommand: npm run start
-
-    # /api/health/db answers 200 only once the service can actually reach
-    # Aurora, which is exactly what "healthy" means now that the portal has no
-    # other database. A deploy with the wrong endpoint or a closed security
-    # group fails here instead of serving error pages.
+    startCommand: npm start
     healthCheckPath: /api/health/db
-
-    autoDeploy: true
-
     envVars:
-      # Next 15 and React 19 need a modern Node. Match this to whatever you
-      # develop against.
       - key: NODE_VERSION
         value: "22"
-
-      # ---------------------------------------------------------------------
-      # Aurora PostgreSQL. The portal has no other database, so the service
-      # cannot start serving without these.
-      #
-      # Render has no OIDC exchange with AWS, so the IAM-token path the README
-      # describes for Vercel is not available here: authenticate with a
-      # password, and keep the cluster reachable from Render's egress IPs.
-      # ---------------------------------------------------------------------
-      - key: RDS_HOSTNAME
+      # The PostgreSQL connection URI, in full. Set it in the dashboard rather
+      # than here: it carries a password, and this file is in the repository.
+      #   postgresql://user:password@host:5432/dbname
+      # A password with punctuation in it has to be URL-encoded.
+      - key: DATABASE_URL
         sync: false
-      - key: RDS_PORT
-        value: "5432"
-      - key: RDS_DATABASE
-        sync: false
-      - key: RDS_USERNAME
-        sync: false
-      - key: RDS_PASSWORD
-        sync: false
-      - key: AWS_REGION
-        value: ap-southeast-1
-
-      # Or, instead of the six above, the whole connection as one URI:
-      # - key: AURORA_DATABASE_URL
-      #   sync: false
-
-      # ---------------------------------------------------------------------
-      # Uploaded files. An S3 bucket, reached with a plain access key since
-      # there is no role to assume from here.
-      # ---------------------------------------------------------------------
-      - key: FILES_BUCKET
-        sync: false
-      - key: AWS_ACCESS_KEY_ID
-        sync: false
-      - key: AWS_SECRET_ACCESS_KEY
-        sync: false
-
-      # ---------------------------------------------------------------------
-      # Owner bootstrap. Two Owners always exist so that one graduating
-      # student is never a single point of failure.
-      # ---------------------------------------------------------------------
+      # The two Owners. Both become T4 on first sign-in, and an Owner listed
+      # here is repaired back to T4 every time they sign in — so losing Owner
+      # access is always fixable by editing this value.
       - key: OWNER_EMAIL
         sync: false
       - key: OWNER_BACKUP_EMAIL
         sync: false
-
-      # Anyone with an address at this domain may sign in; everyone else needs
-      # an explicit invite from an Owner.
+      # Anyone at this domain may sign in without an invite.
       - key: SCHOOL_EMAIL_DOMAIN
         value: kmids.ac.th
+      # Live document editing is relayed through the database rather than
+      # in-process, so instances do not have to share memory and this service
+      # can be scaled out normally. See src/lib/collab/http-transport.ts.

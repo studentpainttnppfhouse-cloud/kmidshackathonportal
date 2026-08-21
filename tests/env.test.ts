@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { envProblems } from '@/lib/env';
 
 /**
- * Every name the setup screen reads, across all three config modules. Listed
- * here so the fixture can clear names that happen to be set in the real
- * environment — a stray AWS_REGION on a developer's machine would otherwise
- * make these pass for the wrong reason.
+ * Every name the diagnostic reads, listed so the fixture can clear ones that
+ * happen to be set on a developer's machine — a stray DATABASE_URL would
+ * otherwise make these pass for the wrong reason.
  */
 const KEYS = [
   'OWNER_EMAIL',
   'OWNER_BACKUP_EMAIL',
   'SCHOOL_EMAIL_DOMAIN',
-  // Aurora
+  'DATABASE_URL', 'AURORA_DATABASE_URL', 'RDS_DATABASE_URL',
+  'POSTGRES_URL', 'POSTGRESQL_URL', 'PG_CONNECTION_STRING',
   'RDS_HOSTNAME', 'RDS_HOST', 'AURORA_HOST', 'PGHOST', 'POSTGRES_HOST',
   'RDS_PORT', 'PGPORT', 'POSTGRES_PORT',
   'RDS_DATABASE', 'RDS_DB_NAME', 'PGDATABASE', 'POSTGRES_DATABASE',
@@ -19,22 +19,14 @@ const KEYS = [
   'AWS_REGION', 'AWS_DEFAULT_REGION', 'RDS_REGION',
   'AWS_ROLE_ARN', 'RDS_ROLE_ARN',
   'RDS_PASSWORD', 'PGPASSWORD', 'POSTGRES_PASSWORD',
-  'AURORA_DATABASE_URL', 'RDS_DATABASE_URL',
-  // Object storage
-  'FILES_BUCKET', 'S3_BUCKET', 'AWS_S3_BUCKET', 'STORAGE_BUCKET',
-  'S3_ENDPOINT', 'AWS_ENDPOINT_URL_S3', 'S3_ROLE_ARN',
 ] as const;
 
+/** The shortest working configuration: one URI and the Owners. */
 const COMPLETE: Record<string, string> = {
+  DATABASE_URL: 'postgresql://portal:secret@db.example.com:5432/hackathon',
   OWNER_EMAIL: 'owner@kmids.ac.th',
   OWNER_BACKUP_EMAIL: 'backup@kmids.ac.th',
   SCHOOL_EMAIL_DOMAIN: 'kmids.ac.th',
-  RDS_HOSTNAME: 'hs.cluster-abc.ap-southeast-1.rds.amazonaws.com',
-  RDS_DATABASE: 'hackathon',
-  RDS_USERNAME: 'portal',
-  AWS_REGION: 'ap-southeast-1',
-  AWS_ROLE_ARN: 'arn:aws:iam::123456789012:role/vercel-hackathon-studio',
-  FILES_BUCKET: 'hackathon-studio-files',
 };
 
 const saved: Record<string, string | undefined> = {};
@@ -67,34 +59,25 @@ describe('envProblems', () => {
 
   it('says nothing about Supabase, which the app no longer uses', () => {
     for (const k of KEYS) delete process.env[k];
-    const text = JSON.stringify(envProblems()).toLowerCase();
-    expect(text).not.toContain('supabase');
+    expect(JSON.stringify(envProblems()).toLowerCase()).not.toContain('supabase');
+  });
+
+  it('asks for one connection URI rather than five separate variables', () => {
+    for (const k of KEYS) delete process.env[k];
+    const problem = envProblems()[0];
+    expect(problem?.key).toBe('DATABASE_URL');
+    expect(problem?.alsoAccepts).toContain('POSTGRES_URL');
+  });
+
+  it('reports the database before anything else, since nothing works without it', () => {
+    for (const k of KEYS) delete process.env[k];
+    expect(keys()[0]).toBe('DATABASE_URL');
   });
 
   it('names every variable that is missing, so a bad deploy is self-explaining', () => {
-    delete process.env.RDS_HOSTNAME;
-    delete process.env.FILES_BUCKET;
+    delete process.env.DATABASE_URL;
     delete process.env.OWNER_EMAIL;
-
-    expect(keys()).toEqual(['RDS_HOSTNAME', 'FILES_BUCKET', 'OWNER_EMAIL']);
-  });
-
-  it('reports the database first, since nothing else matters without it', () => {
-    for (const k of KEYS) delete process.env[k];
-    expect(keys()[0]).toBe('RDS_HOSTNAME');
-  });
-
-  it('gives each problem a place to find the value', () => {
-    delete process.env.FILES_BUCKET;
-    const problem = envProblems().find((p) => p.key === 'FILES_BUCKET');
-    expect(problem?.source).toContain('bucket');
-    expect(problem?.reason).toBe('not set');
-  });
-
-  it('lists the other names a value is accepted under', () => {
-    delete process.env.FILES_BUCKET;
-    const problem = envProblems().find((p) => p.key === 'FILES_BUCKET');
-    expect(problem?.alsoAccepts).toContain('S3_BUCKET');
+    expect(keys()).toEqual(['DATABASE_URL', 'OWNER_EMAIL']);
   });
 
   it('treats an empty string as not set', () => {
@@ -120,40 +103,28 @@ describe('envProblems', () => {
   });
 });
 
-describe('variable names injected by the AWS and Postgres integrations', () => {
-  it('accepts a whole connection URI in place of the separate values', () => {
-    delete process.env.RDS_HOSTNAME;
-    delete process.env.RDS_DATABASE;
-    delete process.env.RDS_USERNAME;
-    process.env.AURORA_DATABASE_URL = 'postgresql://portal@hs.rds.amazonaws.com:5432/hackathon';
-
+describe('the names other hosts and integrations inject', () => {
+  it('accepts what a linked Render or Neon instance sets', () => {
+    delete process.env.DATABASE_URL;
+    process.env.POSTGRES_URL = 'postgresql://portal:secret@db.example.com:5432/hackathon';
     expect(keys()).toEqual([]);
   });
 
-  it('accepts the PG* names a local Postgres uses', () => {
-    delete process.env.RDS_HOSTNAME;
-    delete process.env.RDS_DATABASE;
-    delete process.env.RDS_USERNAME;
-    delete process.env.AWS_ROLE_ARN;
+  it('accepts the five separate RDS variables with an IAM role', () => {
+    delete process.env.DATABASE_URL;
+    process.env.RDS_HOSTNAME = 'hs.cluster-abc.ap-southeast-1.rds.amazonaws.com';
+    process.env.RDS_DATABASE = 'hackathon';
+    process.env.RDS_USERNAME = 'portal';
+    process.env.AWS_REGION = 'ap-southeast-1';
+    process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/hackathon-studio';
+    expect(keys()).toEqual([]);
+  });
+
+  it('accepts the PG* names a local Postgres uses, with no password', () => {
+    delete process.env.DATABASE_URL;
     process.env.PGHOST = 'localhost';
     process.env.PGDATABASE = 'hackathon';
     process.env.PGUSER = 'postgres';
-    process.env.PGPASSWORD = 'secret';
-
-    expect(keys()).toEqual([]);
-  });
-
-  it('takes a password when there is no IAM role to assume', () => {
-    delete process.env.AWS_ROLE_ARN;
-    expect(keys()).toContain('AWS_ROLE_ARN');
-
-    process.env.RDS_PASSWORD = 'secret';
-    expect(keys()).toEqual([]);
-  });
-
-  it('accepts the bucket under the names other integrations inject', () => {
-    delete process.env.FILES_BUCKET;
-    process.env.AWS_S3_BUCKET = 'hackathon-studio-files';
     expect(keys()).toEqual([]);
   });
 });

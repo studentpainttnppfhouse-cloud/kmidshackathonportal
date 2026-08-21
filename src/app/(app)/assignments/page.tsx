@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/pg/server';
-import { getAssignments, getDepartments, getDirectory, isOverdue } from '@/lib/db';
+import { getAssignments, getDepartments, getDirectory, isOverdue } from '@/lib/db/reads';
 import { canApprove, canCreateAssignment, isReadOnly } from '@/lib/permissions';
 import { AssignmentsClient } from '@/features/assignments/assignments-client';
 import type { DrawerComment } from '@/features/assignments/task-drawer';
