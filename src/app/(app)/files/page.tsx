@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import { FilesTabs } from '@/features/files/files-tabs';
@@ -14,7 +14,7 @@ export default async function FilesPage() {
   const user = await getSessionUser();
   if (!user) redirect('/signin');
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const [departments, res] = await Promise.all([
     getDepartments(user),
     db

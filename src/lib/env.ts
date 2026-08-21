@@ -1,30 +1,22 @@
 import { z } from 'zod';
+import { resolveAurora, type AuroraProblem } from '@/lib/aws/config';
 
 /**
  * The environment contract.
  *
- * Deliberately short. The portal needs a database to talk to and it needs to
- * know who the Owners are; everything else has a sensible default.
+ * Deliberately short: the portal needs a database to talk to and it needs to
+ * know who the Owners are. Everything else has a sensible default.
  *
  * `env()` throws when something required is missing, but `envProblems()`
  * reports the same check without throwing, so a diagnostic can name the
  * variable and say where its value comes from. `/api/health/db` is what reads
  * it — deliberately a single endpoint rather than a gate above every route,
  * because a gate that is wrong about one alias hides an app that works.
+ *
+ * The connection itself lives in `aws/config.ts`, which the setup script reads
+ * too; this module owns only the values that are purely the app's.
  */
 const schema = z.object({
-  /** The full PostgreSQL connection URI. */
-  DATABASE_URL: z.string().min(1).refine(
-    (value) => {
-      try {
-        const url = new URL(value);
-        return url.protocol === 'postgres:' || url.protocol === 'postgresql:';
-      } catch {
-        return false;
-      }
-    },
-    { message: 'must be a postgresql:// connection URI' },
-  ),
   /** First Owner. Becomes T4 on first sign-in. */
   OWNER_EMAIL: z.string().email(),
   /** Second Owner — two must always exist so one graduating student is not a
@@ -36,33 +28,7 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
-/**
- * Names each value may arrive under, most-preferred first.
- *
- * Render sets `DATABASE_URL` on a linked Postgres instance, but a cluster
- * added by hand — an RDS endpoint, say — is just as likely to be pasted in
- * under one of the other conventional names. Reading whichever is present
- * means nobody has to copy a value into a second variable to make the app see
- * it.
- */
-const ALIASES: Record<string, readonly string[]> = {
-  DATABASE_URL: [
-    'DATABASE_URL',
-    'POSTGRES_URL',
-    'POSTGRESQL_URL',
-    'RDS_DATABASE_URL',
-    'PG_CONNECTION_STRING',
-  ],
-  OWNER_EMAIL: ['OWNER_EMAIL'],
-  OWNER_BACKUP_EMAIL: ['OWNER_BACKUP_EMAIL'],
-  SCHOOL_EMAIL_DOMAIN: ['SCHOOL_EMAIL_DOMAIN'],
-};
-
-/** Where each value comes from, shown on the setup screen. */
 const SOURCES: Record<string, string> = {
-  DATABASE_URL:
-    'Render → your Postgres → Internal Database URL, or an RDS endpoint written out in full: ' +
-    'postgresql://user:password@host:5432/dbname',
   OWNER_EMAIL: 'The first Owner’s email address, e.g. owner@kmids.ac.th',
   OWNER_BACKUP_EMAIL: 'The second Owner’s email address',
   SCHOOL_EMAIL_DOMAIN: 'School domain that may sign in without an invite, e.g. kmids.ac.th',
@@ -72,34 +38,19 @@ export type EnvProblem = {
   key: string;
   source: string;
   reason: string;
-  /** Other names this value is accepted under, so the screen can say so. */
+  /** Other names this value is accepted under, so a diagnostic can say so. */
   alsoAccepts: string[];
 };
 
-/** First non-empty value among a key's accepted names. */
-function pick(key: string): string | undefined {
-  for (const name of ALIASES[key] ?? [key]) {
-    const value = process.env[name];
-    if (value !== undefined && value !== '') return value;
-  }
-  return undefined;
-}
-
 function read(): Record<string, unknown> {
   return {
-    DATABASE_URL: pick('DATABASE_URL'),
-    OWNER_EMAIL: pick('OWNER_EMAIL'),
-    OWNER_BACKUP_EMAIL: pick('OWNER_BACKUP_EMAIL') ?? '',
-    SCHOOL_EMAIL_DOMAIN: pick('SCHOOL_EMAIL_DOMAIN') ?? 'kmids.ac.th',
+    OWNER_EMAIL: process.env.OWNER_EMAIL,
+    OWNER_BACKUP_EMAIL: process.env.OWNER_BACKUP_EMAIL ?? '',
+    SCHOOL_EMAIL_DOMAIN: process.env.SCHOOL_EMAIL_DOMAIN ?? 'kmids.ac.th',
   };
 }
 
-/**
- * The same check `env()` runs, but it reports instead of throwing — so the app
- * can render a screen naming the variables rather than a bare digest. §3 of
- * the brief says never show a generic error, and this is where that starts.
- */
-export function envProblems(): EnvProblem[] {
+function ownProblems(): EnvProblem[] {
   const parsed = schema.safeParse(read());
   if (parsed.success) return [];
 
@@ -113,13 +64,29 @@ export function envProblems(): EnvProblem[] {
       key,
       source: SOURCES[key] ?? '',
       reason:
-        issue.code === 'invalid_type' && issue.received === 'undefined'
-          ? 'not set'
-          : issue.message,
-      alsoAccepts: (ALIASES[key] ?? []).slice(1),
+        issue.code === 'invalid_type' && issue.received === 'undefined' ? 'not set' : issue.message,
+      alsoAccepts: [],
     });
   }
   return problems;
+}
+
+/** The connection module reports in the same shape; this just relabels it. */
+function adopt(problems: AuroraProblem[]): EnvProblem[] {
+  return problems.map((p) => ({
+    key: p.key,
+    source: p.source,
+    reason: p.reason,
+    alsoAccepts: p.alsoAccepts,
+  }));
+}
+
+/**
+ * Everything a deployment is still missing, reported rather than thrown.
+ * Database first: without it nothing else matters.
+ */
+export function envProblems(): EnvProblem[] {
+  return [...adopt(resolveAurora().problems), ...ownProblems()];
 }
 
 let cached: Env | null = null;
@@ -140,11 +107,6 @@ export function env(): Env {
   return cached;
 }
 
-/** The connection URI, for the pool and for the migration script. */
-export function databaseUrl(): string {
-  return env().DATABASE_URL;
-}
-
 /** The school domain, lowercased and without a leading @. */
 export function schoolDomain(): string {
   return env().SCHOOL_EMAIL_DOMAIN.replace(/^@/, '').toLowerCase();
@@ -155,9 +117,4 @@ export function ownerEmails(): string[] {
   return [e.OWNER_EMAIL, e.OWNER_BACKUP_EMAIL]
     .filter((v): v is string => Boolean(v))
     .map((v) => v.toLowerCase());
-}
-
-/** Test seam: forget the parsed values so a new environment is read. */
-export function resetEnvCache(): void {
-  cached = null;
 }

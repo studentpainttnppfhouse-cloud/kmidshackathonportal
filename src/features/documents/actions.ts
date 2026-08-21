@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
 import { DOC_STATUSES } from '@/lib/types';
@@ -33,7 +33,7 @@ export async function createDocumentAction(
   const parsed = createSchema.safeParse({ title, department_id: departmentId });
   if (!parsed.success) return { ok: false, error: 'Give the document a title.' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('documents')
     .insert({
@@ -44,9 +44,7 @@ export async function createDocumentAction(
     .select('id, title')
     .single();
 
-  if (error || !data) {
-    return { ok: false, error: friendly(error?.message ?? 'Could not create that document.') };
-  }
+  if (error) return { ok: false, error: friendly(error.message) };
 
   await audit({
     actorId: user.id,
@@ -90,7 +88,7 @@ export async function saveDocumentAction(
   const parsed = saveSchema.safeParse({ id, content, plainText, title });
   if (!parsed.success) return { ok: false, error: 'Could not save — invalid content.' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('documents')
     .update({
@@ -122,7 +120,7 @@ export async function snapshotDocumentAction(
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data: doc } = await db
     .from('documents')
     .select('id, content, plain_text, title')
@@ -172,7 +170,7 @@ export async function restoreVersionAction(
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data: version } = await db
     .from('document_versions')
     .select('content, plain_text')
@@ -225,7 +223,7 @@ export async function setDocumentStatusAction(
   const parsed = z.enum(DOC_STATUSES).safeParse(status);
   if (!parsed.success) return { ok: false, error: 'Unknown status' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const patch: Record<string, unknown> = { status: parsed.data };
   if (parsed.data === 'approved') {
     patch.approved_by = user.id;
@@ -266,7 +264,7 @@ export async function deleteDocumentAction(id: string): Promise<ActionResult> {
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('documents')
     .update({ deleted_at: new Date().toISOString() })

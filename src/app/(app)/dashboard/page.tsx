@@ -5,7 +5,7 @@ import {
   isOverdue, summariseByDepartment,
 } from '@/lib/db/reads';
 import { atLeast } from '@/lib/permissions';
-import { admin } from '@/lib/db/client';
+import { adminClient } from '@/lib/pg/server';
 import { relativeTime } from '@/lib/format';
 import { CountdownHero } from '@/features/dashboard/countdown-hero';
 import { TaskList } from '@/features/dashboard/task-list';
@@ -202,7 +202,7 @@ function AdminDashboard({
  * admin client, showing what changed but not who changed it.
  */
 async function recentActivity(realTier: string): Promise<ActivityEntry[]> {
-  const { data } = await admin()
+  const { data } = await adminClient()
     .from('audit_log')
     .select('id, action, target_label, actor_email, created_at')
     .order('created_at', { ascending: false })
@@ -272,7 +272,7 @@ function describeAction(action: string): string {
 }
 
 async function activeStaffCount(): Promise<number> {
-  const { count } = await admin()
+  const { count } = await adminClient()
     .from('users')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'active')

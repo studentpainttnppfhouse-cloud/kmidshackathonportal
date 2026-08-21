@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
 import { ASSIGNMENT_STATUSES, PRIORITIES } from '@/lib/types';
@@ -49,7 +49,7 @@ export async function createAssignmentAction(formData: FormData): Promise<Action
   }
 
   const v = parsed.data;
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
 
   const { data, error } = await db
     .from('assignments')
@@ -64,7 +64,7 @@ export async function createAssignmentAction(formData: FormData): Promise<Action
     .select('id, title')
     .single();
 
-  if (error || !data) return { ok: false, error: friendly(error?.message ?? 'Could not create that task.') };
+  if (error) return { ok: false, error: friendly(error.message) };
 
   if (v.assignees.length > 0) {
     await db.from('assignment_assignees').insert(
@@ -108,7 +108,7 @@ export async function setAssignmentStatusAction(
   const parsed = statusSchema.safeParse({ id, status });
   if (!parsed.success) return { ok: false, error: 'Unknown status' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data: before } = await db
     .from('assignments')
     .select('status, title')
@@ -154,7 +154,7 @@ export async function deleteAssignmentAction(id: string): Promise<ActionResult> 
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   // Soft delete — the trigger would catch a hard DELETE too, but being
   // explicit keeps the recycle bin honest.
   const { data, error } = await db
@@ -203,7 +203,7 @@ export async function addCommentAction(
   const parsed = commentSchema.safeParse({ parentType, parentId, body });
   if (!parsed.success) return { ok: false, error: 'Write something first.' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { error } = await db.from('comments').insert({
     parent_type: parsed.data.parentType,
     parent_id: parsed.data.parentId,

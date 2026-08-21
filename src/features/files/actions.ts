@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { deleteBlob, putBlob } from '@/lib/files/storage';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
@@ -60,7 +60,7 @@ export async function uploadFileAction(formData: FormData): Promise<ActionResult
   // they may file anything in that department before a single byte is stored.
   // `storage_path` is what satisfies the "a file has a source" constraint and
   // marks this as an upload rather than an external link.
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('files')
     .insert({
@@ -140,7 +140,7 @@ export async function addExternalLinkAction(formData: FormData): Promise<ActionR
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('files')
     .insert({ ...parsed.data, uploaded_by: user.id })
@@ -175,7 +175,7 @@ export async function deleteFileAction(id: string): Promise<ActionResult> {
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   // Soft delete only — the object stays in storage so a mistaken delete is
   // recoverable from the recycle bin.
   const { data, error } = await db

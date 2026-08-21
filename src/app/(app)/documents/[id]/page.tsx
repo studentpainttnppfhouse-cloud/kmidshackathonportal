@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { canApprove, canEditOwned, isReadOnly } from '@/lib/permissions';
 import type { DocStatus } from '@/lib/types';
 import { DocumentEditor } from '@/features/documents/editor';
@@ -20,7 +20,7 @@ export default async function DocumentPage({
   if (!user) redirect('/signin');
 
   const { id } = await params;
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
 
   const { data: doc } = await db
     .from('documents')

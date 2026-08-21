@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser, revokeAllSessions } from '@/lib/auth/session';
-import { admin } from '@/lib/db/client';
+import { adminClient } from '@/lib/pg/server';
 import { audit, diffOf } from '@/lib/audit';
 import { canManageUsers } from '@/lib/permissions';
 import { TIERS, type Tier } from '@/lib/types';
@@ -40,7 +40,7 @@ export async function setUserTierAction(userId: string, tier: string): Promise<A
   const parsed = setTierSchema.safeParse({ userId, tier });
   if (!parsed.success) return { ok: false, error: 'Unknown tier' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: before } = await db
     .from('users')
     .select('id, email, tier')
@@ -95,7 +95,7 @@ export async function setUserDepartmentAction(
     .safeParse({ userId, departmentId: departmentId || null });
   if (!parsed.success) return { ok: false, error: 'Unknown department' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: before } = await db
     .from('users')
     .select('email, department_id')
@@ -136,7 +136,7 @@ export async function setUserRoleTitleAction(
   const parsed = z.string().trim().max(120).safeParse(roleTitle);
   if (!parsed.success) return { ok: false, error: 'Role title is too long.' };
 
-  const db = admin();
+  const db = adminClient();
   const { error } = await db
     .from('users')
     .update({ role_title: parsed.data || null })
@@ -177,7 +177,7 @@ export async function suspendUserAction(formData: FormData): Promise<ActionResul
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' };
   }
 
-  const db = admin();
+  const db = adminClient();
   const { data: target } = await db
     .from('users')
     .select('email, tier')
@@ -235,7 +235,7 @@ export async function banUserAction(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'A reason is required.' };
   }
 
-  const db = admin();
+  const db = adminClient();
   const { data: target } = await db
     .from('users')
     .select('email, tier')
@@ -277,7 +277,7 @@ export async function reinstateUserAction(userId: string): Promise<ActionResult>
   const { error: authError, user } = await requireOwner();
   if (authError || !user) return { ok: false, error: authError ?? 'Owner only' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: before } = await db
     .from('users')
     .select('email, status')
@@ -317,7 +317,7 @@ export async function removeUserAction(userId: string): Promise<ActionResult> {
   const { error: authError, user } = await requireOwner();
   if (authError || !user) return { ok: false, error: authError ?? 'Owner only' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: target } = await db
     .from('users')
     .select('email, tier')
@@ -368,7 +368,7 @@ export async function approveRequestAction(
 
   if (!parsed.success) return { ok: false, error: 'Pick a tier.' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: target } = await db.from('users').select('email').eq('id', userId).maybeSingle();
 
   const { error } = await db
@@ -400,7 +400,7 @@ export async function rejectRequestAction(userId: string): Promise<ActionResult>
   const { error: authError, user } = await requireOwner();
   if (authError || !user) return { ok: false, error: authError ?? 'Owner only' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: target } = await db.from('users').select('email').eq('id', userId).maybeSingle();
 
   const { error } = await db
@@ -459,7 +459,7 @@ export async function sendInvitesAction(formData: FormData): Promise<ActionResul
     return { ok: false, error: 'No valid email addresses found in that list.' };
   }
 
-  const db = admin();
+  const db = adminClient();
   const { error } = await db.from('invited_users').upsert(
     emails.map((email) => ({
       email,
@@ -491,7 +491,7 @@ export async function revokeInviteAction(inviteId: string): Promise<ActionResult
   const { error: authError, user } = await requireOwner();
   if (authError || !user) return { ok: false, error: authError ?? 'Owner only' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: before } = await db
     .from('invited_users')
     .select('email')
@@ -544,7 +544,7 @@ export async function createInviteKeyAction(formData: FormData): Promise<ActionR
   }
 
   const code = generateKeyCode(parsed.data.tier);
-  const db = admin();
+  const db = adminClient();
   const { error } = await db.from('invite_keys').insert({
     code,
     label: parsed.data.label ?? null,
@@ -574,7 +574,7 @@ export async function revokeInviteKeyAction(keyId: string): Promise<ActionResult
   const { error: authError, user } = await requireOwner();
   if (authError || !user) return { ok: false, error: authError ?? 'Owner only' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: before } = await db
     .from('invite_keys')
     .select('code')
@@ -606,7 +606,7 @@ export async function transferOwnershipAction(targetUserId: string): Promise<Act
   const { error: authError, user } = await requireOwner();
   if (authError || !user) return { ok: false, error: authError ?? 'Owner only' };
 
-  const db = admin();
+  const db = adminClient();
   const { data: target } = await db
     .from('users')
     .select('id, email, status')
@@ -647,7 +647,7 @@ export async function setArchiveFrozenAction(
   const parsed = z.number().int().min(2020).max(2100).safeParse(year);
   if (!parsed.success) return { ok: false, error: 'Unknown year' };
 
-  const db = admin();
+  const db = adminClient();
   if (frozen) {
     const { error } = await db
       .from('archived_years')

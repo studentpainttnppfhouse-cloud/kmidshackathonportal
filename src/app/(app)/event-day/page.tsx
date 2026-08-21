@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { atLeast, canReadIncidents } from '@/lib/permissions';
 import { EVENT_MODE_START, EVENT_END } from '@/lib/types';
 import {
@@ -13,7 +13,7 @@ export default async function EventDayPage() {
   const user = await getSessionUser();
   if (!user) redirect('/signin');
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
 
   // Outside 19-21 March the screens still work — they are just showing a
   // future day. Nobody wants to discover on the morning that it does not open.

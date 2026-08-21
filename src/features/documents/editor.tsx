@@ -17,18 +17,23 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
-import { prosemirrorJSONToYXmlFragment } from 'y-prosemirror';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered,
   ListChecks, Table as TableIcon, Link2, Code, Quote, Minus, Undo2, Redo2,
   Heading1, Heading2, Heading3, Highlighter, Check, CloudOff, Loader2, Users, Wifi,
 } from 'lucide-react';
 import { cursorColorFor } from '@/lib/collab/provider';
-import {
-  useCollab,
-  type CollabPeer, type CollabStatus,
-} from '@/lib/collab/use-collab';
+import { useCollab, type CollabPeer, type CollabStatus } from '@/lib/collab/use-collab';
+import * as Y from 'yjs';
+import { prosemirrorJSONToYDoc } from 'y-prosemirror';
 import { saveDocumentAction } from './actions';
+
+/**
+ * The Yjs field the Collaboration extension stores the document under. Tiptap
+ * defaults to `default`; naming it here keeps the seeding below reading from
+ * the same place the editor writes to.
+ */
+const COLLAB_FIELD = 'default';
 
 type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
 
@@ -47,10 +52,10 @@ export function DocumentEditor({
   editable: boolean;
   me: { name: string; email: string };
 }) {
-  // Only an editable document joins a channel. Someone reading a published
-  // run-of-show has nothing to merge, and holding a stream open for them would
-  // cost a connection for the whole time the tab is left on screen.
-  const { status, isFirst, peers, provider } = useCollab(documentId, me, editable);
+  // Only editors join the relay. A read-only viewer has nothing to broadcast,
+  // and the insert policy on collab_messages would refuse it anyway.
+  const collabEnabled = editable;
+  const { status, isFirst, peers, provider } = useCollab(documentId, me, collabEnabled);
   const [title, setTitle] = useState(initialTitle);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +65,7 @@ export function DocumentEditor({
   // The editor cannot be built until we know whether a Yjs document is joining
   // it — Collaboration replaces the built-in history, and swapping extensions
   // afterwards would remount and lose the caret.
-  const collabSettled = !editable || status !== 'connecting';
+  const collabSettled = !collabEnabled || status !== 'connecting';
 
   const editor = useEditor({
     editable,
@@ -153,33 +158,45 @@ export function DocumentEditor({
     };
   }, []);
 
-  /**
-   * Seed the shared document from what is stored, but only when this client
-   * joined first — a later joiner is handed the state by a peer, and seeding
-   * again would insert the stored copy a second time.
-   *
-   * The content goes into the Yjs fragment rather than through
-   * `editor.commands.setContent`. Both would put the text on screen, but only
-   * this one puts it in the shared document: an editor-level insert is a local
-   * change that the sync plugin is entitled to replace with whatever the Yjs
-   * document says, which is nothing at all on a fresh join.
-   */
+  // Seed the shared Yjs document from what is stored, but only when this
+  // client joined first. A later joiner receives the state from a peer, and
+  // seeding again would insert the stored copy a second time.
   const seeded = useRef(false);
   useEffect(() => {
     if (!editor || !provider || seeded.current) return;
 
-    // `null` means the join is still in flight. Treating that as "not first"
-    // would settle the question early and leave the document empty, because
-    // the answer only arrives on a later render and this runs once.
+    // `isFirst` is null until the join has been settled, and the editor exists
+    // before then. Marking the document seeded now would latch it shut, and
+    // the answer that arrives a moment later — "yes, seed it" — would be
+    // ignored, leaving the document permanently blank.
     if (isFirst === null) return;
 
-    if (isFirst) {
-      // 'default' is the fragment name Collaboration uses unless told
-      // otherwise. Anything already in it came from a peer.
-      const fragment = provider.doc.getXmlFragment('default');
-      if (fragment.length === 0) {
-        prosemirrorJSONToYXmlFragment(editor.schema, initialContent, fragment);
-      }
+    if (isFirst === false) {
+      seeded.current = true;
+      return;
+    }
+    // Seed the Yjs document, not the editor.
+    //
+    // Once Collaboration is attached, the Yjs document *is* the content, and
+    // it is authoritative: `editor.commands.setContent` is applied and then
+    // immediately undone by the sync plugin, which leaves the page blank and —
+    // because autosave then persists that blank — eventually empties the
+    // stored document too. Writing into the Y.Doc puts the content where the
+    // editor and every peer will read it from.
+    const fragment = provider.doc.getXmlFragment(COLLAB_FIELD);
+    if (fragment.length === 0) {
+      const seed = prosemirrorJSONToYDoc(
+        editor.schema,
+        initialContent as Parameters<typeof prosemirrorJSONToYDoc>[1],
+        COLLAB_FIELD,
+      );
+      Y.applyUpdate(provider.doc, Y.encodeStateAsUpdate(seed));
+
+      // That update looks exactly like the user typing, which would schedule
+      // an autosave of content just read from the database. Cancel it so the
+      // document does not open in a dirty state.
+      if (timer.current) clearTimeout(timer.current);
+      setSaveState('saved');
     }
     seeded.current = true;
   }, [editor, provider, isFirst, initialContent]);
@@ -213,7 +230,7 @@ export function DocumentEditor({
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface-2 px-5 py-2.5 text-[12px] font-semibold">
         <SaveIndicator state={saveState} />
-        <CollabIndicator status={status} peers={peers} enabled={editable} />
+        <CollabIndicator status={status} peers={peers} enabled={collabEnabled} />
         {error ? <span className="text-danger">{error}</span> : null}
         <span className="ml-auto text-muted-2">
           {editor.storage.characterCount?.words?.() ?? editor.getText().split(/\s+/).filter(Boolean).length}{' '}

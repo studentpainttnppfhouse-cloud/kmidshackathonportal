@@ -37,8 +37,6 @@ services:
       # Anyone at this domain may sign in without an invite.
       - key: SCHOOL_EMAIL_DOMAIN
         value: kmids.ac.th
-      # Live document editing is fanned out in-process, so a second instance
-      # would put two editors of one document in different rooms. Scale up
-      # rather than out, or see src/lib/collab/hub.ts.
-      - key: WEB_CONCURRENCY
-        value: "1"
+      # Live document editing is relayed through the database rather than
+      # in-process, so instances do not have to share memory and this service
+      # can be scaled out normally. See src/lib/collab/http-transport.ts.

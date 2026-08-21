@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { assertCanMutate } from '@/lib/permissions';
 
@@ -46,7 +46,7 @@ export async function saveSheetAction(
     return { ok: false, error: 'That sheet is too large or malformed to save.' };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data: row, error } = await db
     .from('spreadsheets')
     .update({ data: parsed.data })
@@ -76,16 +76,14 @@ export async function createSheetAction(
   const parsed = z.string().trim().min(1).max(200).safeParse(title || 'Untitled sheet');
   if (!parsed.success) return { ok: false, error: 'Give the sheet a title.' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('spreadsheets')
     .insert({ title: parsed.data, department_id: departmentId, owner_id: user.id })
     .select('id, title')
     .single();
 
-  if (error || !data) {
-    return { ok: false, error: friendly(error?.message ?? 'Could not create that spreadsheet.') };
-  }
+  if (error) return { ok: false, error: friendly(error.message) };
 
   await audit({
     actorId: user.id,
@@ -113,7 +111,7 @@ export async function renameSheetAction(id: string, title: string): Promise<Acti
   const parsed = z.string().trim().min(1).max(200).safeParse(title);
   if (!parsed.success) return { ok: false, error: 'A sheet needs a title.' };
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('spreadsheets')
     .update({ title: parsed.data })
@@ -138,7 +136,7 @@ export async function deleteSheetAction(id: string): Promise<ActionResult> {
     return { ok: false, error: (e as Error).message };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('spreadsheets')
     .update({ deleted_at: new Date().toISOString() })

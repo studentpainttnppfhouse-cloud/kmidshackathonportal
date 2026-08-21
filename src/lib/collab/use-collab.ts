@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import * as Y from 'yjs';
 import { CollabProvider, cursorColorFor } from './provider';
-import { createLiveTransport } from './live-transport';
+import { createHttpTransport } from './http-transport';
 
 export type CollabStatus = 'connecting' | 'live' | 'solo';
 
@@ -15,11 +16,10 @@ export interface CollabPeer {
 /**
  * Joins a document's collaboration channel.
  *
- * Returns `solo` when the channel is unreachable. The editor stays fully
- * usable in that state and keeps its debounced autosave; it just cannot merge
- * with anyone else. That fallback is deliberate — an editor that refused to
- * open because a stream failed would be far worse than one that saves
- * normally.
+ * Returns `solo` when the relay is unreachable. The editor stays fully usable
+ * in that state and keeps its debounced autosave; it just cannot merge with
+ * anyone else. That fallback is deliberate: an editor that refuses to open
+ * because a request failed would be far worse than one that saves normally.
  */
 export function useCollab(
   documentId: string,
@@ -41,25 +41,32 @@ export function useCollab(
 
     let cancelled = false;
 
-    const instance = new CollabProvider(createLiveTransport(documentId), {
-      name: user.name,
-      color: cursorColorFor(user.email),
-    });
-    providerRef.current = instance;
-    setProvider(instance);
+    // The Yjs client id doubles as the relay's sender id, so a peer can drop
+    // its own messages without the server having to know who anyone is. The
+    // document is made first so that id exists before the transport does.
+    const doc = new Y.Doc();
+    const transport = createHttpTransport(documentId, String(doc.clientID));
+    const collab = new CollabProvider(
+      transport,
+      { name: user.name, color: cursorColorFor(user.email) },
+      doc,
+    );
+
+    providerRef.current = collab;
+    setProvider(collab);
 
     const onAwareness = () => {
-      const states = [...instance.awareness.getStates().entries()]
-        .filter(([clientId]) => clientId !== instance.doc.clientID)
+      const states = [...collab.awareness.getStates().entries()]
+        .filter(([clientId]) => clientId !== collab.doc.clientID)
         .map(([clientId, state]) => {
           const u = (state as { user?: { name: string; color: string } }).user;
           return { clientId, name: u?.name ?? 'Someone', color: u?.color ?? '#94A3B8' };
         });
       setPeers(states);
     };
-    instance.awareness.on('change', onAwareness);
+    collab.awareness.on('change', onAwareness);
 
-    void instance.connect().then((result) => {
+    void collab.connect().then((result) => {
       if (cancelled) return;
       setStatus(result.connected ? 'live' : 'solo');
       setIsFirst(result.isFirst);
@@ -68,8 +75,8 @@ export function useCollab(
 
     return () => {
       cancelled = true;
-      instance.awareness.off('change', onAwareness);
-      instance.destroy();
+      collab.awareness.off('change', onAwareness);
+      collab.destroy();
       providerRef.current = null;
     };
   }, [documentId, enabled, user.name, user.email]);

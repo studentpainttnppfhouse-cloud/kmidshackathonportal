@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { admin } from '@/lib/db/client';
+import { adminClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { canExportAll } from '@/lib/permissions';
 
@@ -28,7 +28,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Owner only' }, { status: 403 });
   }
 
-  const db = admin();
+  const db = adminClient();
   const data: Record<string, unknown> = {};
 
   for (const table of TABLES) {

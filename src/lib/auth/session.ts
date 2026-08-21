@@ -1,7 +1,7 @@
 import 'server-only';
 import { cookies, headers } from 'next/headers';
 import { createHash, randomBytes } from 'node:crypto';
-import { admin } from '@/lib/db/client';
+import { adminClient } from '@/lib/pg/server';
 import type { AppUser, SessionUser, Tier } from '@/lib/types';
 import { isTier } from '@/lib/permissions';
 
@@ -38,7 +38,7 @@ export async function createDeviceSession(userId: string): Promise<void> {
   const hdrs = await headers();
   const userAgent = hdrs.get('user-agent') ?? null;
 
-  await admin().from('device_sessions').insert({
+  await adminClient().from('device_sessions').insert({
     user_id: userId,
     token_hash: hashToken(token),
     user_agent: userAgent,
@@ -62,7 +62,7 @@ export async function destroyDeviceSession(): Promise<void> {
   const token = jar.get(SESSION_COOKIE)?.value;
 
   if (token) {
-    await admin()
+    await adminClient()
       .from('device_sessions')
       .update({ revoked_at: new Date().toISOString() })
       .eq('token_hash', hashToken(token));
@@ -74,7 +74,7 @@ export async function destroyDeviceSession(): Promise<void> {
 
 /** Revoke every session for a user — what makes a suspension bite immediately. */
 export async function revokeAllSessions(userId: string): Promise<void> {
-  await admin()
+  await adminClient()
     .from('device_sessions')
     .update({ revoked_at: new Date().toISOString() })
     .eq('user_id', userId)
@@ -93,7 +93,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const db = admin();
+  const db = adminClient();
   const { data: session } = await db
     .from('device_sessions')
     .select('id, user_id, last_seen_at, expires_at, revoked_at')
@@ -131,7 +131,7 @@ async function liftExpiredSuspension(user: AppUser): Promise<AppUser> {
   if (user.status !== 'suspended' || !user.suspended_until) return user;
   if (new Date(user.suspended_until) > new Date()) return user;
 
-  const { data } = await admin()
+  const { data } = await adminClient()
     .from('users')
     .update({ status: 'active', suspended_until: null })
     .eq('id', user.id)
@@ -150,7 +150,7 @@ async function touchSession(
   if (Date.now() - seenAt < TOUCH_INTERVAL_MS) return;
 
   const now = new Date().toISOString();
-  const db = admin();
+  const db = adminClient();
   // Roll the expiry forward so an active device never gets logged out.
   await db
     .from('device_sessions')

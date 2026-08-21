@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { SHIRT_SIZES } from '@/lib/types';
 
@@ -46,7 +46,7 @@ export async function saveProfileAction(
 
   const v = parsed.data;
   // Goes through the user's own token, so RLS decides whether this is allowed.
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { error } = await db
     .from('users')
     .update({

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { docxFromTiptap, htmlFromTiptap } from '@/lib/export/document-export';
 
@@ -12,7 +12,7 @@ import { docxFromTiptap, htmlFromTiptap } from '@/lib/export/document-export';
  *
  * "PDF" is served as a print-ready HTML page that opens the browser's own
  * print dialogue. Rendering a real PDF server-side would mean shipping a
- * headless browser, which is a lot of weight on a small web service for a
+ * headless browser, which is a lot of weight on a Vercel function for a
  * feature students will use a handful of times a term. The output is
  * identical once printed; the trade is documented in README.md.
  */
@@ -28,7 +28,7 @@ export async function GET(
   const { id } = await params;
   const format = request.nextUrl.searchParams.get('format') === 'docx' ? 'docx' : 'pdf';
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data: doc } = await db
     .from('documents')
     .select('id, title, content')

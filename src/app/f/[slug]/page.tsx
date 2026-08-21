@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { admin } from '@/lib/db/client';
+import { adminClient } from '@/lib/pg/server';
 import { getSessionUser } from '@/lib/auth/session';
 import type { FormField, FormSettings } from '@/lib/forms';
 import { PublicForm } from '@/features/forms/public-form';
@@ -17,7 +17,7 @@ export default async function PublicFormPage({
 }) {
   const { slug } = await params;
 
-  const { data } = await admin()
+  const { data } = await adminClient()
     .from('forms')
     .select('id, title, description, schema, settings, status, opens_at, closes_at')
     .eq('public_slug', slug)

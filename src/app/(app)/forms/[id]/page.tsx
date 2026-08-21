@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { getDepartments } from '@/lib/db/reads';
 import { canManageUsers, canWriteDepartment } from '@/lib/permissions';
 import type { FormField, FormSettings } from '@/lib/forms';
@@ -17,7 +17,7 @@ export default async function FormPage({ params }: { params: Promise<{ id: strin
   if (!user) redirect('/signin');
 
   const { id } = await params;
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
 
   const { data } = await db
     .from('forms')

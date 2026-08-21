@@ -1,135 +1,135 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
-import { publish, subscribe, type Message } from '@/lib/collab/hub';
+import { userClient } from '@/lib/pg/server';
 
-/** Holds a stream open and reaches the database, so: Node runtime, never cached. */
+/**
+ * The collaboration relay.
+ *
+ * Supabase Realtime gave editors a websocket to shout Yjs updates over. There
+ * is no such channel in front of Aurora, so peers post updates here and poll
+ * for the ones they have not seen. It is chattier than a socket, but it works
+ * on any host — including serverless ones that will not hold a connection
+ * open — and it needs no service beyond the database the app already has.
+ *
+ * Authorisation is not decided here: both statements go through the signed-in
+ * user's session, so `collab_messages`' own policies allow the read only if
+ * the document is visible and the write only if it is editable.
+ */
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/** Never hand back an unbounded backlog. */
+const MAX_MESSAGES = 200;
+
 /**
- * The collaboration channel for one document.
- *
- * `GET` opens a Server-Sent Events stream carrying other people's edits;
- * `POST` submits one of your own. SSE rather than a websocket because Next
- * route handlers speak it natively — no second server, no upgrade handshake,
- * and it survives a proxy that would drop an idle socket.
- *
- * Both verbs check that the caller may actually open the document, under their
- * own database role. Without that, knowing a document id would be enough to
- * read every edit made to it.
+ * How recently another editor must have been heard from to count as present.
+ * Comfortably longer than the transport's heartbeat, so a quiet peer that is
+ * still sitting on the document is not mistaken for an empty room.
  */
+const PRESENCE_WINDOW_SECONDS = 30;
 
-/** Silence closes intermediaries. A comment every 25s keeps the stream alive. */
-const HEARTBEAT_MS = 25_000;
-
-async function mayOpen(userId: string, documentId: string): Promise<boolean> {
-  const { data } = await asUser(userId)
-    .from('documents')
-    .select('id')
-    .eq('id', documentId)
-    .is('deleted_at', null)
-    .maybeSingle();
-
-  return data !== null;
+interface Params {
+  params: Promise<{ documentId: string }>;
 }
 
-export async function GET(
-  request: Request,
-  context: { params: Promise<{ documentId: string }> },
-) {
-  const user = await getSessionUser();
-  if (!user) return new NextResponse('Not signed in', { status: 401 });
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  const { documentId } = await context.params;
-  if (!(await mayOpen(user.id, documentId))) {
-    return new NextResponse('Not found', { status: 404 });
+export async function GET(request: NextRequest, { params }: Params) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
+
+  const { documentId } = await params;
+  if (!UUID.test(documentId)) {
+    return NextResponse.json({ error: 'Bad document id' }, { status: 400 });
   }
 
-  const clientId = new URL(request.url).searchParams.get('client');
-  if (!clientId) return new NextResponse('Missing client id', { status: 400 });
+  const url = new URL(request.url);
+  const after = Number(url.searchParams.get('after') ?? '0');
+  const sender = url.searchParams.get('sender') ?? '';
 
-  const encoder = new TextEncoder();
+  const db = await userClient(user.id);
+  const { data, error } = await db
+    .from('collab_messages')
+    .select('id, sender, event, payload')
+    .eq('document_id', documentId)
+    .gt('id', Number.isFinite(after) ? after : 0)
+    .order('id', { ascending: true })
+    .limit(MAX_MESSAGES);
 
-  const stream = new ReadableStream({
-    start(controller) {
-      let open = true;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-      const write = (chunk: string) => {
-        if (!open) return;
-        try {
-          controller.enqueue(encoder.encode(chunk));
-        } catch {
-          open = false;
-        }
-      };
+  // `after=0` is a client joining. That happens once per editor session, which
+  // makes it the right moment to age out relay traffic nobody can still need —
+  // no scheduler required.
+  if (after === 0) void db.rpc('app.prune_collab_messages');
 
-      const unsubscribe = subscribe(documentId, clientId, (message: Message) => {
-        write(`data: ${JSON.stringify(message)}\n\n`);
-      });
+  const rows = (data ?? []) as { id: number; sender: string; event: string; payload: unknown }[];
+  // A peer's own updates are already applied locally; echoing them back would
+  // be harmless (Yjs updates are idempotent) but wastes a round of work.
+  const messages = rows.filter((m) => m.sender !== sender);
+  const cursor = rows.length > 0 ? rows[rows.length - 1]!.id : after;
 
-      const heartbeat = setInterval(() => write(': keep-alive\n\n'), HEARTBEAT_MS);
+  // Who is responsible for seeding this document from the database.
+  //
+  // A joiner otherwise has no way to tell "nobody has answered yet" from
+  // "nobody is here", so it must sit out the full sync grace before it dares
+  // seed — on every open, including the overwhelmingly common case of editing
+  // alone. Worse, two editors opening at the same moment can both conclude
+  // they were first and seed the content twice.
+  //
+  // The relay settles it instead: whoever's earliest message still inside the
+  // presence window is the oldest is the seeder. The database serialises those
+  // inserts, so exactly one client gets the answer "you", however close
+  // together they arrived.
+  const since = new Date(Date.now() - PRESENCE_WINDOW_SECONDS * 1000).toISOString();
 
-      const close = () => {
-        if (!open) return;
-        open = false;
-        clearInterval(heartbeat);
-        unsubscribe();
-        try {
-          controller.close();
-        } catch {
-          // Already closed by the runtime.
-        }
-      };
+  const { data: presence } = await db
+    .from('collab_messages')
+    .select('id, sender')
+    .eq('document_id', documentId)
+    .gt('created_at', since)
+    .order('id', { ascending: true })
+    .limit(1);
 
-      // A tab that navigates away aborts the request; without this the
-      // subscriber would linger and the heartbeat would run forever.
-      request.signal.addEventListener('abort', close);
+  const seeder = ((presence ?? []) as { sender: string }[])[0]?.sender ?? null;
 
-      // Tells the client it has joined, which is what `connect()` waits for.
-      write(`data: ${JSON.stringify({ event: 'ready', payload: {} })}\n\n`);
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      // Nginx buffers proxied responses by default, which would hold every
-      // edit until the buffer filled.
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return NextResponse.json(
+    { messages, cursor, seeder },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }
 
-export async function POST(
-  request: Request,
-  context: { params: Promise<{ documentId: string }> },
-) {
+export async function POST(request: NextRequest, { params }: Params) {
   const user = await getSessionUser();
-  if (!user) return new NextResponse('Not signed in', { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
 
-  const { documentId } = await context.params;
-  if (!(await mayOpen(user.id, documentId))) {
-    return new NextResponse('Not found', { status: 404 });
+  const { documentId } = await params;
+  if (!UUID.test(documentId)) {
+    return NextResponse.json({ error: 'Bad document id' }, { status: 400 });
   }
 
-  let body: { client?: string; event?: string; payload?: Record<string, unknown> };
+  let body: { sender?: unknown; event?: unknown; payload?: unknown };
   try {
     body = await request.json();
   } catch {
-    return new NextResponse('Expected JSON', { status: 400 });
+    return NextResponse.json({ error: 'Bad body' }, { status: 400 });
   }
 
-  if (!body.client || !body.event) {
-    return new NextResponse('Missing client or event', { status: 400 });
+  const sender = typeof body.sender === 'string' ? body.sender : '';
+  const event = typeof body.event === 'string' ? body.event : '';
+  if (!sender || !event) {
+    return NextResponse.json({ error: 'sender and event are required' }, { status: 400 });
   }
 
-  const delivered = publish(documentId, body.client, {
-    event: body.event,
+  const db = await userClient(user.id);
+  const { error } = await db.from('collab_messages').insert({
+    document_id: documentId,
+    sender,
+    event,
     payload: body.payload ?? {},
   });
 
-  return NextResponse.json({ delivered });
+  if (error) return NextResponse.json({ error: error.message }, { status: 403 });
+
+  return NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
 }

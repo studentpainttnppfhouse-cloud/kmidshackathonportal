@@ -1,23 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { envProblems } from '@/lib/env';
 
-/** Every name the environment contract reads, under any of its spellings. */
+/**
+ * Every name the diagnostic reads, listed so the fixture can clear ones that
+ * happen to be set on a developer's machine — a stray DATABASE_URL would
+ * otherwise make these pass for the wrong reason.
+ */
 const KEYS = [
-  'DATABASE_URL',
   'OWNER_EMAIL',
   'OWNER_BACKUP_EMAIL',
   'SCHOOL_EMAIL_DOMAIN',
-  // The other names a connection URI is accepted under.
-  'POSTGRES_URL',
-  'POSTGRESQL_URL',
-  'RDS_DATABASE_URL',
-  'PG_CONNECTION_STRING',
+  'DATABASE_URL', 'AURORA_DATABASE_URL', 'RDS_DATABASE_URL',
+  'POSTGRES_URL', 'POSTGRESQL_URL', 'PG_CONNECTION_STRING',
+  'RDS_HOSTNAME', 'RDS_HOST', 'AURORA_HOST', 'PGHOST', 'POSTGRES_HOST',
+  'RDS_PORT', 'PGPORT', 'POSTGRES_PORT',
+  'RDS_DATABASE', 'RDS_DB_NAME', 'PGDATABASE', 'POSTGRES_DATABASE',
+  'RDS_USERNAME', 'RDS_USER', 'PGUSER', 'POSTGRES_USER',
+  'AWS_REGION', 'AWS_DEFAULT_REGION', 'RDS_REGION',
+  'AWS_ROLE_ARN', 'RDS_ROLE_ARN',
+  'RDS_PASSWORD', 'PGPASSWORD', 'POSTGRES_PASSWORD',
 ] as const;
 
-const URI = 'postgresql://portal:secret@db.example.com:5432/hackathon';
-
+/** The shortest working configuration: one URI and the Owners. */
 const COMPLETE: Record<string, string> = {
-  DATABASE_URL: URI,
+  DATABASE_URL: 'postgresql://portal:secret@db.example.com:5432/hackathon',
   OWNER_EMAIL: 'owner@kmids.ac.th',
   OWNER_BACKUP_EMAIL: 'backup@kmids.ac.th',
   SCHOOL_EMAIL_DOMAIN: 'kmids.ac.th',
@@ -38,73 +44,87 @@ beforeEach(() => {
 afterEach(() => {
   for (const k of KEYS) {
     if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k] as string;
+    else process.env[k] = saved[k];
   }
 });
 
+function keys() {
+  return envProblems().map((p) => p.key);
+}
+
 describe('envProblems', () => {
-  it('reports nothing when everything is set', () => {
+  it('reports nothing when the environment is complete', () => {
     expect(envProblems()).toEqual([]);
   });
 
-  it('names a missing variable rather than throwing', () => {
+  it('says nothing about Supabase, which the app no longer uses', () => {
+    for (const k of KEYS) delete process.env[k];
+    expect(JSON.stringify(envProblems()).toLowerCase()).not.toContain('supabase');
+  });
+
+  it('asks for one connection URI rather than five separate variables', () => {
+    for (const k of KEYS) delete process.env[k];
+    const problem = envProblems()[0];
+    expect(problem?.key).toBe('DATABASE_URL');
+    expect(problem?.alsoAccepts).toContain('POSTGRES_URL');
+  });
+
+  it('reports the database before anything else, since nothing works without it', () => {
+    for (const k of KEYS) delete process.env[k];
+    expect(keys()[0]).toBe('DATABASE_URL');
+  });
+
+  it('names every variable that is missing, so a bad deploy is self-explaining', () => {
     delete process.env.DATABASE_URL;
-
-    const problems = envProblems();
-    expect(problems).toHaveLength(1);
-    expect(problems[0]?.key).toBe('DATABASE_URL');
-    expect(problems[0]?.reason).toBe('not set');
+    delete process.env.OWNER_EMAIL;
+    expect(keys()).toEqual(['DATABASE_URL', 'OWNER_EMAIL']);
   });
 
-  it('tells the reader what else the value is accepted as', () => {
-    delete process.env.DATABASE_URL;
-    expect(envProblems()[0]?.alsoAccepts).toContain('POSTGRES_URL');
-  });
-
-  it('says where to find the value', () => {
-    delete process.env.DATABASE_URL;
-    expect(envProblems()[0]?.source).toMatch(/Render|postgresql:\/\//);
-  });
-
-  it('accepts a URI that arrived under another name', () => {
-    delete process.env.DATABASE_URL;
-    process.env.POSTGRES_URL = URI;
-    expect(envProblems()).toEqual([]);
-  });
-
-  it('prefers DATABASE_URL over the aliases', () => {
-    process.env.POSTGRES_URL = 'postgresql://other@elsewhere:5432/other';
-    expect(envProblems()).toEqual([]);
-  });
-
-  it('treats an empty string as absent', () => {
-    process.env.DATABASE_URL = '';
-    expect(envProblems().map((p) => p.key)).toEqual(['DATABASE_URL']);
-  });
-
-  it('rejects a connection string that is not a postgres URI', () => {
-    process.env.DATABASE_URL = 'https://example.com/db';
-    expect(envProblems()[0]?.reason).toMatch(/postgresql/);
+  it('treats an empty string as not set', () => {
+    process.env.OWNER_EMAIL = '';
+    expect(keys()).toContain('OWNER_EMAIL');
   });
 
   it('rejects an owner address that is not an email', () => {
-    process.env.OWNER_EMAIL = 'not-an-address';
-    expect(envProblems().map((p) => p.key)).toEqual(['OWNER_EMAIL']);
+    process.env.OWNER_EMAIL = 'not-an-email';
+    const problem = envProblems().find((p) => p.key === 'OWNER_EMAIL');
+    expect(problem).toBeDefined();
+    expect(problem?.reason).not.toBe('not set');
   });
 
-  it('allows the backup owner to be left empty', () => {
-    process.env.OWNER_BACKUP_EMAIL = '';
-    expect(envProblems()).toEqual([]);
+  it('does not require the backup owner to be set', () => {
+    delete process.env.OWNER_BACKUP_EMAIL;
+    expect(keys()).not.toContain('OWNER_BACKUP_EMAIL');
   });
 
-  it('defaults the school domain', () => {
+  it('defaults the school domain rather than demanding it', () => {
     delete process.env.SCHOOL_EMAIL_DOMAIN;
-    expect(envProblems()).toEqual([]);
+    expect(keys()).not.toContain('SCHOOL_EMAIL_DOMAIN');
+  });
+});
+
+describe('the names other hosts and integrations inject', () => {
+  it('accepts what a linked Render or Neon instance sets', () => {
+    delete process.env.DATABASE_URL;
+    process.env.POSTGRES_URL = 'postgresql://portal:secret@db.example.com:5432/hackathon';
+    expect(keys()).toEqual([]);
   });
 
-  it('reports every missing variable at once, not just the first', () => {
+  it('accepts the five separate RDS variables with an IAM role', () => {
     delete process.env.DATABASE_URL;
-    delete process.env.OWNER_EMAIL;
-    expect(envProblems().map((p) => p.key).sort()).toEqual(['DATABASE_URL', 'OWNER_EMAIL']);
+    process.env.RDS_HOSTNAME = 'hs.cluster-abc.ap-southeast-1.rds.amazonaws.com';
+    process.env.RDS_DATABASE = 'hackathon';
+    process.env.RDS_USERNAME = 'portal';
+    process.env.AWS_REGION = 'ap-southeast-1';
+    process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/hackathon-studio';
+    expect(keys()).toEqual([]);
+  });
+
+  it('accepts the PG* names a local Postgres uses, with no password', () => {
+    delete process.env.DATABASE_URL;
+    process.env.PGHOST = 'localhost';
+    process.env.PGDATABASE = 'hackathon';
+    process.env.PGUSER = 'postgres';
+    expect(keys()).toEqual([]);
   });
 });

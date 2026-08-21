@@ -1,5 +1,5 @@
 import 'server-only';
-import { admin, asUser } from '@/lib/db/client';
+import { adminClient, userClient } from '@/lib/pg/server';
 
 /**
  * File contents.
@@ -18,7 +18,7 @@ export interface StoredBlob {
 
 /** Attach contents to a `files` row that has already been created. */
 export async function putBlob(fileId: string, bytes: Buffer): Promise<void> {
-  const { error } = await admin()
+  const { error } = await adminClient()
     .from('file_blobs')
     .insert({ file_id: fileId, bytes });
 
@@ -34,7 +34,7 @@ export async function putBlob(fileId: string, bytes: Buffer): Promise<void> {
  * honoured.
  */
 export async function getBlob(userId: string, fileId: string): Promise<StoredBlob | null> {
-  const db = asUser(userId);
+  const db = await userClient(userId);
 
   const { data } = await db
     .from('files')
@@ -62,7 +62,7 @@ export async function getBlob(userId: string, fileId: string): Promise<StoredBlo
 
 /** Drop the contents of a file whose row was refused or removed for good. */
 export async function deleteBlob(fileId: string): Promise<void> {
-  await admin().from('file_blobs').delete().eq('file_id', fileId);
+  await adminClient().from('file_blobs').delete().eq('file_id', fileId);
 }
 
 /** Where the browser fetches a stored file from. */

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { audit } from '@/lib/audit';
 import { assertCanMutate, canPublishAnnouncement } from '@/lib/permissions';
 
@@ -51,7 +51,7 @@ export async function publishAnnouncementAction(formData: FormData): Promise<Act
     };
   }
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const { data, error } = await db
     .from('announcements')
     .insert({
@@ -65,12 +65,12 @@ export async function publishAnnouncementAction(formData: FormData): Promise<Act
     .select('id, title')
     .single();
 
-  if (error || !data) {
+  if (error) {
     return {
       ok: false,
-      error: error?.message.includes('row-level security')
+      error: error.message.includes('row-level security')
         ? 'You do not have permission to post that.'
-        : error?.message ?? 'Could not post that announcement.',
+        : error.message,
     };
   }
 
@@ -94,7 +94,7 @@ export async function markAnnouncementReadAction(id: string): Promise<void> {
   const user = await getSessionUser();
   if (!user) return;
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   await db
     .from('announcement_reads')
     .upsert({ announcement_id: id, user_id: user.id }, { onConflict: 'announcement_id,user_id' });

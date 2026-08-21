@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
-import { asUser } from '@/lib/db/client';
+import { userClient } from '@/lib/pg/server';
 import { getDepartments, getDirectory } from '@/lib/db/reads';
 import { canCreateContent } from '@/lib/permissions';
 import {
@@ -13,7 +13,7 @@ export default async function SocialPage() {
   const user = await getSessionUser();
   if (!user) redirect('/signin');
 
-  const db = asUser(user.id);
+  const db = await userClient(user.id);
   const [departments, directory, itemsRes, accountsRes] = await Promise.all([
     getDepartments(user),
     getDirectory(user),
