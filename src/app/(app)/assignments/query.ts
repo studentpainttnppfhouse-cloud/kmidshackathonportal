@@ -12,7 +12,8 @@ const include = {
   },
 } as const;
 
-export type TaskFilters = { dept?: string; status?: string; mine?: boolean };
+/** `all` lifts the row cap, for the Owner and Admins who oversee every team. */
+export type TaskFilters = { dept?: string; status?: string; mine?: boolean; all?: boolean };
 
 /** Tasks the viewer may read, filtered the same way on every task page. */
 export async function loadTasks(viewer: Viewer, f: TaskFilters) {
@@ -31,7 +32,7 @@ export async function loadTasks(viewer: Viewer, f: TaskFilters) {
       where,
       include,
       orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-      take: 400,
+      take: f.all ? 5000 : 400,
     }),
     db.department.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
