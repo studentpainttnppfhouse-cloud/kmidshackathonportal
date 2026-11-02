@@ -131,6 +131,18 @@ const INLINE_TYPES = new Set([
   "image/webp",
   "image/avif",
   "application/pdf",
+  // Media plays in <video>/<audio>, which runs no script from the file.
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+  "audio/mp4",
+  // Plain text cannot run anything; nosniff and the sandbox keep it text.
+  "text/plain",
+  "text/csv",
+  "text/markdown",
 ]);
 
 /** Extension → type, for the browsers that send `application/octet-stream`. */
@@ -155,6 +167,9 @@ const BY_EXTENSION: Record<string, string> = {
   ppt: "application/vnd.ms-powerpoint",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   mp4: "video/mp4",
+  webm: "video/webm",
+  m4a: "audio/mp4",
+  ogg: "audio/ogg",
   mov: "video/quicktime",
   mp3: "audio/mpeg",
   wav: "audio/wav",

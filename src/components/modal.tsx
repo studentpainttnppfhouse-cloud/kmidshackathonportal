@@ -20,7 +20,7 @@ export function Modal({
   onClose: () => void;
   title: string;
   description?: string;
-  size?: "md" | "lg";
+  size?: "md" | "lg" | "xl";
   children: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement | null>(null);
@@ -53,7 +53,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby="hs-modal-title"
         tabIndex={-1}
-        className={`hs-modal outline-none ${size === "lg" ? "hs-modal-lg" : ""}`}
+        className={`hs-modal outline-none ${size === "lg" ? "hs-modal-lg" : size === "xl" ? "hs-modal-lg hs-modal-xl" : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">

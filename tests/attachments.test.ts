@@ -85,12 +85,17 @@ test("the ordinary types a team actually shares are recognised", () => {
   assert.equal(safeMimeType("", "clip.MP4"), "video/mp4");
 });
 
-test("only images and PDFs may be shown in a tab", () => {
+test("only images, PDFs, media and plain text may be shown in a tab", () => {
   assert.equal(canRenderInline("image/png"), true);
   assert.equal(canRenderInline("image/jpeg"), true);
   assert.equal(canRenderInline("application/pdf"), true);
   assert.equal(canRenderInline("application/octet-stream"), false);
-  assert.equal(canRenderInline("text/csv"), false);
+  assert.equal(canRenderInline("video/mp4"), true);
+  assert.equal(canRenderInline("text/csv"), true);
+  // Markup that can run script never renders, whatever it is called.
+  assert.equal(canRenderInline("text/html"), false);
+  assert.equal(canRenderInline("image/svg+xml"), false);
+  assert.equal(canRenderInline("application/xhtml+xml"), false);
 });
 
 test("a malformed content type falls back to a byte stream", () => {
