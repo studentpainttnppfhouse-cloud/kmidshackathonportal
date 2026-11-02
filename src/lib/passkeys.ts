@@ -1,6 +1,5 @@
 import "server-only";
-import { cookies } from "next/headers";
-import { appOrigin } from "@/lib/request";
+import { cookies, headers } from "next/headers";
 
 /**
  * Passkeys (WebAuthn) via @simplewebauthn/server.
@@ -14,9 +13,28 @@ const CHALLENGE_TTL_S = 5 * 60;
 
 export const RP_NAME = "Hackathon Studio";
 
+/**
+ * The relying party must match the address the browser is on, or the browser
+ * refuses with "The RP ID ... is invalid for this domain". So it is taken from
+ * the request itself, not from APP_URL: that may name a different domain than
+ * the one somebody opened (a Vercel preview URL, an alias, a custom domain).
+ *
+ * WEBAUTHN_RP_ID is still honoured, but only when it is the request's host or
+ * a parent domain of it, which is the only case a browser accepts.
+ */
 export async function relyingParty(): Promise<{ rpID: string; origin: string }> {
-  const origin = await appOrigin();
-  const rpID = process.env.WEBAUTHN_RP_ID?.trim() || new URL(origin).hostname;
+  const h = await headers();
+  const host = (h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000").split(",")[0].trim();
+  const proto = h.get("x-forwarded-proto")?.split(",")[0].trim();
+  const scheme = proto === "http" || host.startsWith("localhost") ? "http" : "https";
+  const origin = `${scheme}://${host}`;
+  const hostname = new URL(origin).hostname;
+
+  const configured = process.env.WEBAUTHN_RP_ID?.trim().toLowerCase();
+  const rpID =
+    configured && (hostname === configured || hostname.endsWith(`.${configured}`))
+      ? configured
+      : hostname;
   return { rpID, origin };
 }
 
