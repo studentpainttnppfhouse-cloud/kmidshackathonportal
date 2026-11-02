@@ -2014,3 +2014,12 @@ body[data-cookie-notice="1"] {
 .hs-modal-xl {
   max-width: min(64rem, 100%);
 }
+
+/* The HACK logo: black ink on light, white on dark. Print always uses black. */
+.hs-logo-dark { display: none; }
+:root[data-theme="dark"] .hs-logo-light { display: none; }
+:root[data-theme="dark"] .hs-logo-dark { display: inline-block; }
+@media print {
+  :root[data-theme="dark"] .hs-logo-light { display: inline-block; }
+  :root[data-theme="dark"] .hs-logo-dark { display: none; }
+}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Ecg, Mixed, Scallop } from "@/components/ui";
 import {
   StickerBandage,
@@ -40,19 +41,18 @@ export function Logo({ size = 40, tone = "brand" }: { size?: number; tone?: "bra
   );
 }
 
+/**
+ * The HACK logo, linking home. Two files: black ink for light mode and white
+ * for dark, swapped by the theme in globals.css (.hs-logo-light / -dark).
+ */
 export function Wordmark() {
   return (
-    <span className="flex items-center gap-2.5">
-      <Logo size={34} />
-      <span className="leading-tight">
-        <span className="block text-[15px] font-extrabold tracking-tight text-brand-deep">
-          Hackathon Studio
-        </span>
-        <span className="block text-[11px] font-semibold tracking-wide text-faint">
-          KMIDS · 2027
-        </span>
-      </span>
-    </span>
+    <Link href="/dashboard" aria-label="KMIDS Hack, home" className="inline-flex items-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/hack-logo-black.png" alt="KMIDS Hack" width={477} height={200} className="hs-logo-light h-11 w-auto" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/hack-logo-white.png" alt="" aria-hidden="true" width={477} height={200} className="hs-logo-dark h-11 w-auto" />
+    </Link>
   );
 }
 
