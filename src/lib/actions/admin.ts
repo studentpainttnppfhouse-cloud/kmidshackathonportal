@@ -153,6 +153,7 @@ export async function setUserTier(userId: string, tier: Tier): Promise<void> {
   await db.user.update({ where: { id: userId }, data: { tier } });
   await audit(viewer.id, "user.tier.changed", { type: "user", id: userId, detail: tier });
   revalidatePath("/admin");
+  revalidatePath(`/people/${userId}`);
 }
 
 export async function setUserDepartment(userId: string, departmentId: string): Promise<void> {
@@ -173,6 +174,8 @@ export async function setUserDepartment(userId: string, departmentId: string): P
   });
   await audit(viewer.id, "user.department.changed", { type: "user", id: userId });
   revalidatePath("/admin");
+  revalidatePath("/people");
+  revalidatePath(`/people/${userId}`);
 }
 
 /**
@@ -211,6 +214,7 @@ export async function setUserRole(userId: string, roleTitle: string): Promise<vo
   await audit(viewer.id, "user.role.changed", { type: "user", id: userId, detail: title });
   revalidatePath("/admin");
   revalidatePath("/people");
+  revalidatePath(`/people/${userId}`);
 }
 
 export async function setUserFlag(userId: string, flag: UserFlag, value: boolean): Promise<void> {
