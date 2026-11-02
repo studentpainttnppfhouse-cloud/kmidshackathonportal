@@ -1099,7 +1099,7 @@ body[data-cookie-notice="1"] {
   justify-content: center;
   padding: 1rem;
   background: var(--hs-scrim);
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(8px);
   animation: hs-fade 0.16s ease-out both;
 }
 .hs-modal {
@@ -2003,3 +2003,10 @@ body[data-cookie-notice="1"] {
 @media (max-width: 1023px) { .hs-workspace > header { min-height: 65px; } }
 @media (prefers-reduced-motion: reduce) { .hs-nav-link { transition: none; } }
 @media print { .hs-workspace { background: white; } }
+
+/* Wider centred pop-up for settings panels (Modal size="lg"). */
+.hs-modal-lg {
+  max-width: 34rem;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
