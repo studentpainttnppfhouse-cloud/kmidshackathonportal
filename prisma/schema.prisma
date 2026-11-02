@@ -1041,3 +1041,22 @@ model AvatarImage {
 
   @@map("avatar_images")
 }
+
+/// A staff calendar entry: meetings, deadlines, rehearsals. Heads and admins
+/// add them; everyone sees them. A null department means all staff.
+model CalendarEvent {
+  id           String    @id @default(cuid())
+  title        String    @db.VarChar(191)
+  notes        String?   @db.Text
+  location     String?   @db.VarChar(191)
+  startsAt     DateTime
+  endsAt       DateTime?
+  allDay       Boolean   @default(false)
+  departmentId String?
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([startsAt])
+  @@map("calendar_events")
+}
