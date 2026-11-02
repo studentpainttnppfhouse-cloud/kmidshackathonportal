@@ -142,7 +142,17 @@ export function ListView({ items }: { items: AssignmentSummary[] }) {
   );
 }
 
-export function CalendarView({ items, month }: { items: AssignmentSummary[]; month: Date }) {
+export type CalendarEventChip = { id: string; day: number; title: string; time: string | null; color: string };
+
+export function CalendarView({
+  items,
+  month,
+  events = [],
+}: {
+  items: AssignmentSummary[];
+  month: Date;
+  events?: CalendarEventChip[];
+}) {
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
 
@@ -182,6 +192,7 @@ export function CalendarView({ items, month }: { items: AssignmentSummary[]; mon
         {cells.map((day, i) => {
           if (day === null) return <div key={`pad-${i}`} />;
           const dayItems = byDay.get(day) ?? [];
+          const dayEvents = events.filter((e) => e.day === day);
           const isToday = isThisMonth && today.getDate() === day;
 
           return (
@@ -199,6 +210,18 @@ export function CalendarView({ items, month }: { items: AssignmentSummary[]; mon
                 {day}
               </p>
               <div className="space-y-1">
+                {dayEvents.map((e) => (
+                  <a
+                    key={e.id}
+                    href={`#event-${e.id}`}
+                    title={e.title}
+                    className="block truncate rounded border-l-2 bg-tint px-1.5 py-0.5 text-[11px] font-semibold text-ink"
+                    style={{ borderColor: e.color }}
+                  >
+                    {e.time ? `${e.time} ` : ""}
+                    {e.title}
+                  </a>
+                ))}
                 {dayItems.slice(0, 3).map((a) => (
                   <Link
                     key={a.id}

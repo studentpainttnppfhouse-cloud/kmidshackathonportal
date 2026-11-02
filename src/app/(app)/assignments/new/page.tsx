@@ -102,6 +102,7 @@ export default async function NewAssignmentPage({
           canAssignOthers={canAssignOthers}
           canApprove={canAssignOthers}
           viewerId={viewer.id}
+          teams={departments.map((d) => ({ id: d.id, name: d.name }))}
           defaultDepartmentId={preselect}
           defaultAssigneeIds={canAssignOthers ? [] : [viewer.id]}
         />

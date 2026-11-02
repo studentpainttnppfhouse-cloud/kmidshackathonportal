@@ -222,6 +222,7 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
             canAssignOthers={mayAssign}
             canApprove={mayApprove}
             viewerId={viewer.id}
+            teams={departments.map((d) => ({ id: d.id, name: d.name }))}
             assignment={{
               id: a.id,
               title: a.title,

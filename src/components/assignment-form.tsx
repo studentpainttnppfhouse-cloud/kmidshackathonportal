@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui";
 import { PRIORITY_LABEL, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { toDateInput } from "@/lib/dates";
 import type { AssignmentStatus, Priority } from "@prisma/client";
+import { PeoplePicker, type PickerTeam } from "@/components/people-picker";
 
 const initial: FormState = {};
 
@@ -65,7 +66,9 @@ export function AssignmentForm({
   assignment,
   defaultDepartmentId,
   defaultAssigneeIds = [],
+  teams,
 }: {
+  teams?: PickerTeam[];
   departments: PickerDept[];
   people: PickerUser[];
   canAssignOthers: boolean;
@@ -95,28 +98,10 @@ export function AssignmentForm({
   const [assignees, setAssignees] = useState<string[]>(
     assignment ? assignment.assigneeIds : defaultAssigneeIds,
   );
-  const [query, setQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
 
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
-
-  // The people most likely to own this task are the ones on the team it belongs
-  // to, so they sort first — a fifty-name list is otherwise a scroll every time.
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const hits = needle
-      ? people.filter((p) =>
-          `${p.name} ${p.nickname ?? ""} ${p.roleTitle ?? ""}`.toLowerCase().includes(needle),
-        )
-      : people;
-
-    return [...hits].sort((a, b) => {
-      const aHere = a.departmentId === departmentId ? 0 : 1;
-      const bHere = b.departmentId === departmentId ? 0 : 1;
-      if (aHere !== bHere) return aHere - bHere;
-      return (a.nickname || a.name).localeCompare(b.nickname || b.name);
-    });
-  }, [people, query, departmentId]);
 
   const toggle = (id: string) =>
     setAssignees((current) =>
@@ -264,49 +249,22 @@ export function AssignmentForm({
                 </ul>
               ) : null}
 
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search the team…"
-                aria-label="Search people"
-                className="hs-input py-2 text-sm"
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="hs-btn hs-btn-secondary w-full justify-center"
+              >
+                {assignees.length > 0 ? "Change people…" : "Choose people…"}
+              </button>
+              <PeoplePicker
+                open={pickerOpen}
+                onClose={() => setPickerOpen(false)}
+                people={people}
+                teams={teams ?? departments}
+                selected={assignees}
+                onConfirm={setAssignees}
+                focusTeamId={departmentId}
               />
-
-              <div className="hs-picker">
-                {matches.length === 0 ? (
-                  <p className="px-2 py-3 text-center text-xs text-faint">Nobody by that name.</p>
-                ) : (
-                  matches.map((person) => {
-                    const on = assignees.includes(person.id);
-                    return (
-                      <button
-                        key={person.id}
-                        type="button"
-                        onClick={() => toggle(person.id)}
-                        aria-pressed={on}
-                        className="hs-picker-row"
-                      >
-                        <Avatar
-                          name={person.name}
-                          nickname={person.nickname}
-                          url={person.avatarUrl}
-                          size={26}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-left">
-                          {person.nickname || person.name}
-                          {person.departmentId === departmentId ? (
-                            <span className="ml-1.5 text-[11px] text-faint">this team</span>
-                          ) : null}
-                        </span>
-                        <span aria-hidden="true" className="hs-picker-tick">
-                          {on ? "✓" : ""}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
 
               {!assignees.includes(viewerId) && byId.has(viewerId) ? (
                 <button
