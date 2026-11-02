@@ -193,7 +193,7 @@ export function AppNav({
       {/* Desktop sidebar */}
       <aside className="hs-no-print hidden w-[236px] shrink-0 border-r border-line bg-surface lg:flex lg:sticky lg:top-0 lg:h-screen lg:flex-col lg:justify-between lg:px-4 lg:py-5 lg:gap-5">
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mb-4 px-1">
+          <div className="mb-5 mt-2 flex justify-center px-1">
             <Wordmark />
           </div>
           <NavSearch />
