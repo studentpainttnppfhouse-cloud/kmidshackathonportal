@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, LayoutGrid, List, CalendarDays, User } from 'lucide-react';
+import { Plus, LayoutGrid, List, CalendarDays, User, Globe } from 'lucide-react';
 import type { AssignmentRow } from '@/lib/rows';
 import type { Department } from '@/lib/types';
 import { Board } from './board';
@@ -9,8 +9,9 @@ import { ListView } from './list-view';
 import { CalendarView } from './calendar-view';
 import { TaskDrawer, type DrawerComment } from './task-drawer';
 import { NewTaskDialog } from './new-task-dialog';
+import { AllTeamsView } from './all-teams-view';
 
-type View = 'board' | 'list' | 'calendar' | 'mine';
+type View = 'all' | 'board' | 'list' | 'calendar' | 'mine';
 
 export function AssignmentsClient({
   assignments,
@@ -23,6 +24,7 @@ export function AssignmentsClient({
   commentsByTask,
   initialTaskId,
   overdueCount,
+  seesAllTeams = false,
 }: {
   assignments: AssignmentRow[];
   departments: Department[];
@@ -34,20 +36,28 @@ export function AssignmentsClient({
   commentsByTask: Record<string, DrawerComment[]>;
   initialTaskId?: string;
   overdueCount: number;
+  /** Owner / Admin: show every team, with a team filter and the All teams view. */
+  seesAllTeams?: boolean;
 }) {
-  const [view, setView] = useState<View>('board');
+  const [view, setView] = useState<View>(seesAllTeams ? 'all' : 'board');
+  const [team, setTeam] = useState<string>('all');
   const [openId, setOpenId] = useState<string | null>(initialTaskId ?? null);
   const [creating, setCreating] = useState(false);
 
   const deptNames = Object.fromEntries(departments.map((d) => [d.id, d.name]));
+  const teamFiltered =
+    team === 'all'
+      ? assignments
+      : assignments.filter((a) => (a.department_id ?? 'general') === team);
   const visible =
     view === 'mine'
-      ? assignments.filter((a) => a.assignees.some((x) => x.user_id === currentUserId))
-      : assignments;
+      ? teamFiltered.filter((a) => a.assignees.some((x) => x.user_id === currentUserId))
+      : teamFiltered;
 
   const open = openId ? assignments.find((a) => a.id === openId) ?? null : null;
 
   const tabs: { key: View; label: string; icon: typeof List }[] = [
+    ...(seesAllTeams ? [{ key: 'all' as View, label: 'All teams', icon: Globe }] : []),
     { key: 'board', label: 'Board', icon: LayoutGrid },
     { key: 'list', label: 'List', icon: List },
     { key: 'calendar', label: 'Calendar', icon: CalendarDays },
@@ -74,6 +84,25 @@ export function AssignmentsClient({
           ))}
         </div>
 
+        {seesAllTeams ? (
+          <select
+            value={team}
+            onChange={(e) => setTeam(e.target.value)}
+            aria-label="Filter by team"
+            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold"
+          >
+            <option value="all">All teams ({assignments.length})</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} ({assignments.filter((a) => a.department_id === d.id).length})
+              </option>
+            ))}
+            <option value="general">
+              General ({assignments.filter((a) => !a.department_id).length})
+            </option>
+          </select>
+        ) : null}
+
         <div className="flex-1" />
 
         {overdueCount > 0 ? (
@@ -90,6 +119,14 @@ export function AssignmentsClient({
         ) : null}
       </div>
 
+      {view === 'all' ? (
+        <AllTeamsView
+          assignments={visible}
+          deptNames={deptNames}
+          deptOrder={departments.map((d) => d.id)}
+          onOpen={setOpenId}
+        />
+      ) : null}
       {view === 'board' || view === 'mine' ? (
         <Board
           assignments={visible}

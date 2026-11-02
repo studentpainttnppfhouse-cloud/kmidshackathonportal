@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userClient } from '@/lib/supabase/user';
 import { getAssignments, getDepartments, getDirectory, isOverdue } from '@/lib/db';
-import { canApprove, canCreateAssignment, isReadOnly } from '@/lib/permissions';
+import { atLeast, canApprove, canCreateAssignment, isReadOnly } from '@/lib/permissions';
 import { AssignmentsClient } from '@/features/assignments/assignments-client';
 import type { DrawerComment } from '@/features/assignments/task-drawer';
 
@@ -17,9 +17,12 @@ export default async function AssignmentsPage({
   if (!user) redirect('/signin');
 
   const params = await searchParams;
+  // Owners (T4) and Admins (T3) oversee every team, so they get the full
+  // portal-wide list with no row cap. RLS already lets them read every dept.
+  const seesAllTeams = atLeast(user.effectiveTier, 'T3');
 
   const [assignments, departments, directory] = await Promise.all([
-    getAssignments(user),
+    getAssignments(user, seesAllTeams ? { limit: 5000 } : {}),
     getDepartments(user),
     getDirectory(user),
   ]);
@@ -41,6 +44,7 @@ export default async function AssignmentsPage({
       commentsByTask={commentsByTask}
       initialTaskId={params.task}
       overdueCount={assignments.filter(isOverdue).length}
+      seesAllTeams={seesAllTeams}
     />
   );
 }
