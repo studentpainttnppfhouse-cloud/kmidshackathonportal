@@ -2010,3 +2010,7 @@ body[data-cookie-notice="1"] {
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
 }
+
+.hs-modal-xl {
+  max-width: min(64rem, 100%);
+}

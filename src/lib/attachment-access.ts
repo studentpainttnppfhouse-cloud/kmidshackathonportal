@@ -213,8 +213,9 @@ export async function resolveParent(
         // Profile photos are shown on every task, comment and people card, so
         // reading one is reading the portal.
         canRead: can(viewer, "read", { kind: "user", userId: parentId }),
+        // Yourself, or an admin adding reference files to someone's profile.
         canWrite:
-          parentId === viewer.id || can(viewer, "manage_users", { kind: "user", userId: parentId }),
+          parentId === viewer.id || can(viewer, "update", { kind: "user", userId: parentId }),
         path: `/people/${parentId}`,
         label: "this profile",
       };

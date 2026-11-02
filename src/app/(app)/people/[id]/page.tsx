@@ -11,6 +11,10 @@ import { decryptField } from "@/lib/crypto";
 import { swatchStyle } from "@/lib/color";
 import { STATUS_LABEL, STATUS_ORDER, TIER_ORDER } from "@/lib/constants";
 import { ResetLinkPanel } from "../people-widgets";
+import { Attachments } from "@/components/attachments";
+import { listAttachments } from "@/lib/attachment-access";
+import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
+import { can } from "@/lib/policy";
 import { ProfileMenu, type ProfileSetting } from "./profile-menu";
 
 export const metadata: Metadata = { title: "Profile" };
@@ -89,7 +93,9 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   const canManage = isAdmin(viewer) && TIER_ORDER[person.tier] <= TIER_ORDER[viewer.tier];
   const owner = isOwner(viewer);
 
-  const [assignments, documents, departments] = await Promise.all([
+  const mayAttach = person.id === viewer.id || can(viewer, "update", { kind: "user", userId: person.id });
+
+  const [assignments, documents, departments, files] = await Promise.all([
     db.assignment.findMany({
       where: { deletedAt: null, assignees: { some: { userId: person.id } } },
       include: { department: { select: { name: true, color: true, slug: true } } },
@@ -104,6 +110,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     canManage
       ? db.department.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } })
       : Promise.resolve([]),
+    listAttachments("user", person.id),
   ]);
 
   const showContact = isAdmin(viewer) || viewer.id === person.id;
@@ -330,6 +337,19 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               </ul>
             )}
           </Section>
+
+          <section className="hs-card p-5">
+            <Attachments
+              parentType="user"
+              parentId={person.id}
+              canWrite={mayAttach}
+              attachments={files}
+              viewerId={viewer.id}
+              maxBytes={MAX_UPLOAD_BYTES}
+              title="Reference files"
+              hint="Click a file to preview it"
+            />
+          </section>
         </div>
 
         <aside className="space-y-5">

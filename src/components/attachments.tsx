@@ -12,11 +12,11 @@ import { Feedback, SubmitButton } from "@/components/form-bits";
 import {
   KIND_ICON,
   MAX_FILES_PER_UPLOAD,
-  canRenderInline,
   formatBytes,
   kindOf,
 } from "@/lib/attachments";
 import type { FormState } from "@/lib/actions/auth";
+import { FilePreviewButton } from "@/components/file-preview";
 
 const initialUpload: UploadState = {};
 const initialLink: FormState = {};
@@ -135,16 +135,13 @@ function AttachmentRow({ file, canRemove }: { file: AttachmentItem; canRemove: b
       </span>
 
       <div className="min-w-0 flex-1">
-        <a
-          href={linked || !canRenderInline(file.mimeType) ? href : `${href}?inline=1`}
-          // A link attachment leaves the portal; a stored one does not, so
-          // only the first needs the new tab and the noreferrer.
-          {...(linked ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-          className="block truncate text-sm font-semibold text-ink hover:text-brand-deep"
+        <FilePreviewButton
+          file={file}
+          className="block max-w-full truncate text-left text-sm font-semibold text-ink hover:text-brand-deep"
         >
           {file.name}
           {linked ? " ↗" : ""}
-        </a>
+        </FilePreviewButton>
         <p className="truncate text-xs text-faint">
           {linked ? "Stored elsewhere" : formatBytes(file.size)} ·{" "}
           {file.uploadedBy.nickname || file.uploadedBy.name}

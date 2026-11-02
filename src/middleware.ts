@@ -66,8 +66,9 @@ function buildCsp(nonce: string, isProduction: boolean): string {
     // known ahead of time. https: only — never http:, never data: for scripts.
     "img-src 'self' data: blob: https:",
     "connect-src 'self'",
-    "frame-src 'none'",
-    "media-src 'self'",
+    // blob: only, for the in-page file preview (a PDF fetched into a blob).
+    "frame-src blob:",
+    "media-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     // Server Actions post back to this origin. Nothing else may receive a form
