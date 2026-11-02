@@ -184,7 +184,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="px-5 pb-5 sm:px-7">
-          <div className="-mt-12 sm:-mt-16">
+          <div className="relative z-10 -mt-12 sm:-mt-16">
             <div className="inline-block rounded-full p-1" style={{ background: "var(--hs-surface)" }}>
               <Avatar name={person.name} nickname={person.nickname} url={person.avatarUrl} size={120} />
             </div>
