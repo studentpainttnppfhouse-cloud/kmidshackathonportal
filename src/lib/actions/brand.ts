@@ -122,6 +122,33 @@ export async function addBrandFont(_prev: FormState, formData: FormData): Promis
   return { ok: `${d.name} added.` };
 }
 
+export async function updateBrandColor(_prev: FormState, formData: FormData): Promise<FormState> {
+  const viewer = await requireBrandEditor();
+  const limit = rateLimit(`write:${viewer.id}`, RULES.write);
+  if (!limit.ok) return { error: retryMessage(limit.retryAfter) };
+
+  const id = String(formData.get("id") ?? "");
+  const parsed = colorSchema.safeParse({
+    name: formData.get("name") ?? "",
+    value: formData.get("value") ?? "",
+    groupName: formData.get("groupName") ?? "",
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const d = parsed.data;
+
+  const token = await db.brandToken.findUnique({ where: { id }, select: { kind: true } });
+  if (!token || token.kind !== "color") return { error: "That colour is gone." };
+
+  await db.brandToken.update({
+    where: { id },
+    data: { name: d.name, value: d.value.toUpperCase(), groupName: d.groupName || null, note: d.note || null },
+  });
+  await audit(viewer.id, "brand.color.updated", { type: "brand", detail: `${d.name} ${d.value}` });
+  revalidatePath("/brand");
+  return { ok: "Saved." };
+}
+
 export async function deleteBrandToken(id: string): Promise<void> {
   const viewer = await requireBrandEditor();
 

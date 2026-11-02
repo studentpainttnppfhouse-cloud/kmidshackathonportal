@@ -175,14 +175,18 @@ function AttachmentRow({ file, canRemove }: { file: AttachmentItem; canRemove: b
  * for the upload; the server checks it again, and the server is the one that
  * decides.
  */
-function AttachmentUploader({
+export function AttachmentUploader({
   parentType,
   parentId,
   maxBytes,
+  accept,
+  onUploaded,
 }: {
   parentType: string;
   parentId: string;
   maxBytes: number;
+  accept?: string;
+  onUploaded?: () => void;
 }) {
   const router = useRouter();
   const [state, action] = useActionState(uploadAttachments, initialUpload);
@@ -195,7 +199,9 @@ function AttachmentUploader({
       // The list is server-rendered, so a successful upload needs the page
       // data again — revalidatePath alone does not repaint a client component.
       router.refresh();
+      onUploaded?.();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.uploaded, router]);
 
   return (
@@ -212,6 +218,7 @@ function AttachmentUploader({
           name="files"
           type="file"
           multiple
+          accept={accept}
           className="hs-input file:mr-3 file:rounded-lg file:border-0 file:bg-tint file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-deep"
           onChange={(event) => {
             const files = [...(event.target.files ?? [])];
