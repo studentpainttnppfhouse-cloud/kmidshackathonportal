@@ -77,6 +77,8 @@ export const PARENT_TYPES = [
   "file",
   "form_response",
   "user",
+  "brand_font",
+  "brand_logo",
 ] as const;
 
 export type ParentType = (typeof PARENT_TYPES)[number];
@@ -166,6 +168,10 @@ const BY_EXTENSION: Record<string, string> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ppt: "application/vnd.ms-powerpoint",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ttf: "font/ttf",
+  otf: "font/otf",
+  woff: "font/woff",
+  woff2: "font/woff2",
   mp4: "video/mp4",
   webm: "video/webm",
   m4a: "audio/mp4",

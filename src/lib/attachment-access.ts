@@ -199,6 +199,21 @@ export async function resolveParent(
       };
     }
 
+    case "brand_font":
+    case "brand_logo": {
+      // The brand kit is one shared set. Everyone reads it; admins edit it.
+      if (parentId !== "kit") return DENIED(parentType, parentId);
+      return {
+        parentType,
+        parentId,
+        departmentId: null,
+        canRead: can(viewer, "read", { kind: "system" }),
+        canWrite: can(viewer, "manage_departments", { kind: "system" }),
+        path: "/brand",
+        label: "the brand kit",
+      };
+    }
+
     case "user": {
       const row = await db.user.findUnique({
         where: { id: parentId },

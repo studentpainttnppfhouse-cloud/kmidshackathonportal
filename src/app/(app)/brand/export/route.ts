@@ -18,20 +18,7 @@ export const runtime = "nodejs";
  * as a specification rather than a screenshot.
  */
 
-const CORE = [
-  { name: "Primary pink", hex: "#EC4899", note: "Buttons, active states, the ECG line" },
-  { name: "Deep pink", hex: "#BE185D", note: "Headings and emphasis" },
-  { name: "Pink wash", hex: "#FDF2F8", note: "Page background (light)" },
-  { name: "Surface", hex: "#FFFFFF", note: "Cards and sheets" },
-  { name: "Body text", hex: "#1F2937", note: "All running text" },
-  { name: "Muted", hex: "#64748B", note: "Secondary text" },
-  { name: "Success", hex: "#22C55E", note: "Done, approved" },
-  { name: "Warning", hex: "#F59E0B", note: "Needs review" },
-  { name: "Danger", hex: "#DC2626", note: "Overdue, incidents" },
-  { name: "Dark ground", hex: "#17121A", note: "Page background (dark mode)" },
-  { name: "Dark surface", hex: "#201A24", note: "Cards in dark mode" },
-  { name: "Dark pink", hex: "#F472B6", note: "Brand pink, lifted for dark mode" },
-];
+
 
 export async function GET(): Promise<NextResponse> {
   const viewer = await getViewer();
@@ -46,11 +33,16 @@ export async function GET(): Promise<NextResponse> {
   }
 
   const tokens = await db.brandToken.findMany({
-    orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+    where: { kind: "color" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
   const colors = tokens.filter((t) => t.kind === "color");
-  const fonts = tokens.filter((t) => t.kind === "font");
+  const fontFiles = await db.attachment.findMany({
+    where: { parentType: "brand_font", parentId: "kit", deletedAt: null },
+    select: { name: true },
+    orderBy: { createdAt: "asc" },
+  });
 
   const pdf = new PdfBuilder();
 
@@ -59,56 +51,25 @@ export async function GET(): Promise<NextResponse> {
   pdf.rule();
 
   pdf.text("Core palette", { size: 15, font: "Helvetica-Bold", spaceAfter: 6 });
-  pdf.text("Built into the portal's stylesheet. These do not change without a code change.", {
-    size: 9.5,
-    color: "#64748B",
-    spaceAfter: 8,
-  });
-  for (const color of CORE) pdf.swatch(color.hex, color.name, color.note);
-
-  if (colors.length > 0) {
-    pdf.space(10);
-    pdf.rule();
-    pdf.text("Team palette", { size: 15, font: "Helvetica-Bold", spaceAfter: 6 });
-
-    let currentGroup: string | null = null;
-    for (const color of colors) {
-      const group = color.groupName ?? "Ungrouped";
-      if (group !== currentGroup) {
-        currentGroup = group;
-        pdf.space(6);
-        pdf.text(group, { size: 11, font: "Helvetica-Bold", color: "#64748B", spaceAfter: 4 });
-      }
-      pdf.swatch(color.value, color.name, color.note ?? "");
+  let currentGroup: string | null = null;
+  for (const color of colors) {
+    const group = color.groupName ?? "Other";
+    if (group !== currentGroup) {
+      currentGroup = group;
+      pdf.space(6);
+      pdf.text(group, { size: 11, font: "Helvetica-Bold", color: "#64748B", spaceAfter: 4 });
     }
+    pdf.swatch(color.value, color.name, color.note ?? "");
   }
 
   pdf.space(10);
   pdf.rule();
   pdf.text("Typography", { size: 15, font: "Helvetica-Bold", spaceAfter: 6 });
-  pdf.text("Inter throughout. Display 34/800, Heading 24/700, Subheading 17/700, Body 15/400, Caption 12/600.", {
-    size: 10,
-    spaceAfter: 6,
-  });
-
-  for (const font of fonts) {
-    pdf.text(`${font.name} — ${font.value}${font.note ? ` (${font.note})` : ""}`, {
-      size: 10,
-      indent: 12,
-      spaceAfter: 2,
-    });
+  if (fontFiles.length === 0) {
+    pdf.text("No fonts uploaded yet.", { size: 10, spaceAfter: 2 });
   }
-
-  pdf.space(10);
-  pdf.rule();
-  pdf.text("Rules", { size: 15, font: "Helvetica-Bold", spaceAfter: 6 });
-  for (const rule of [
-    "The ECG line is a single continuous path, stroke width 2.5, round caps.",
-    "Pink on white, or white on pink. In dark mode the pink lifts to #F472B6.",
-    "Corners 8-16px. Dividers 1px. Nothing is navy.",
-    "Animation is decoration and stops under prefers-reduced-motion.",
-  ]) {
-    pdf.text(`- ${rule}`, { size: 10, indent: 10, spaceAfter: 2 });
+  for (const f of fontFiles) {
+    pdf.text(`${f.name.replace(/\.(ttf|otf|woff2?)$/i, "")}  (${f.name})`, { size: 10, indent: 12, spaceAfter: 2 });
   }
 
   const stamp = new Intl.DateTimeFormat("en-GB", {
