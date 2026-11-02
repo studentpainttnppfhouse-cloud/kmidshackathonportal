@@ -49,9 +49,9 @@ export function Wordmark() {
   return (
     <Link href="/dashboard" aria-label="KMIDS Hack, home" className="inline-flex items-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/hack-logo-black.png" alt="KMIDS Hack" width={477} height={200} className="hs-logo-light h-11 w-auto" />
+      <img src="/hack-logo-black.png" alt="KMIDS Hack" width={477} height={200} className="hs-logo-light h-9 w-auto" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/hack-logo-white.png" alt="" aria-hidden="true" width={477} height={200} className="hs-logo-dark h-11 w-auto" />
+      <img src="/hack-logo-white.png" alt="" aria-hidden="true" width={477} height={200} className="hs-logo-dark h-9 w-auto" />
     </Link>
   );
 }
