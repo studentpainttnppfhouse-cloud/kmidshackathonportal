@@ -6,7 +6,7 @@ import { AssignmentFilters } from "@/components/assignment-filters";
 import { ListView } from "../assignments/views";
 import { loadTasks } from "../assignments/query";
 
-export const metadata: Metadata = { title: "My tasks" };
+export const metadata: Metadata = { title: "My assignments" };
 export const dynamic = "force-dynamic";
 
 export default async function MyTasksPage({
@@ -22,7 +22,7 @@ export default async function MyTasksPage({
     <div className="hs-enter space-y-4">
       <PageHeader
         eyebrow="Tasks"
-        title="My tasks"
+        title="My assignments"
         action={
           creatable.length > 0 ? (
             <Link href="/assignments/new" className="hs-btn hs-btn-primary">

@@ -48,11 +48,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {
         key: "my-tasks",
         href: "/my-tasks",
-        label: "My tasks",
+        label: "My assignments",
         badge: myOpenTasks || undefined,
       },
       ...(atLeast(viewer, "T2_HEAD")
-        ? ([{ key: "assignments", href: "/assignments", label: "Board", badge: undefined }] as const)
+        ? ([{ key: "assignments", href: "/assignments", label: "Assignments board", badge: undefined }] as const)
         : []),
       { key: "calendar", href: "/calendar", label: "Calendar", badge: undefined },
       { key: "departments", href: "/departments", label: "Teams & departments", badge: undefined },

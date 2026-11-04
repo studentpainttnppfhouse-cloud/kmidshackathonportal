@@ -89,14 +89,14 @@ export const PORTAL_PAGES: readonly PortalPage[] = [
   },
   {
     key: "my-tasks",
-    label: "My tasks",
+    label: "My assignments",
     href: "/my-tasks",
     nav: true,
     blurb: "A person's own tasks, whatever team they sit in.",
   },
   {
     key: "assignments",
-    label: "Board",
+    label: "Assignments board",
     href: "/assignments",
     nav: true,
     blurb: "Task pages. The board and list index is for heads and up; members open their own tasks from here.",

@@ -118,7 +118,7 @@ export default async function DashboardPage({
       <Card>
         <details open className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-            <span className="hs-h2">My tasks</span>
+            <span className="hs-h2">My assignments</span>
             <span className="flex items-center gap-3">
               {canSeePage(viewer, "assignments") ? (
                 <Link href="/assignments?view=mine" className="text-sm font-semibold text-brand-deep">
