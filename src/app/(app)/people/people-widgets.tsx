@@ -4,12 +4,8 @@ import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import {
   addPerson,
-  approveRecovery,
-  denyRecovery,
-  generateResetLink,
   type LinkState,
 } from "@/lib/actions/people";
-import type { FormState } from "@/lib/actions/auth";
 import { Feedback, SubmitButton } from "@/components/form-bits";
 import { Avatar, TierPill } from "@/components/ui";
 import { swatchStyle } from "@/lib/color";
@@ -282,33 +278,6 @@ export function PeopleTable({ people, isAdmin }: { people: PersonRow[]; isAdmin:
 }
 
 // ---------------------------------------------------------------------------
-// Link result (shared by add, reset and approve)
-// ---------------------------------------------------------------------------
-
-function LinkResult({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="space-y-2 rounded-xl border border-line bg-surface-2 p-3">
-      <code className="block break-all text-xs text-ink">{url}</code>
-      <button
-        type="button"
-        className="hs-btn hs-btn-secondary px-3 py-1.5 text-xs"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(url);
-            setCopied(true);
-          } catch {
-            setCopied(false);
-          }
-        }}
-      >
-        {copied ? "Copied" : "Copy link"}
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Add person
 // ---------------------------------------------------------------------------
 
@@ -379,11 +348,10 @@ function AddPersonForm({
   const [state, action] = useActionState<LinkState, FormData>(addPerson, {});
   const [preview, setPreview] = useState<string | null>(null);
 
-  if (state.url) {
+  if (state.ok) {
     return (
       <div className="space-y-3">
         <Feedback state={state} />
-        <LinkResult url={state.url} />
         <button type="button" className="hs-btn hs-btn-secondary" onClick={onAnother}>
           Add somebody else
         </button>
@@ -470,111 +438,5 @@ function AddPersonForm({
       <Feedback state={state} />
       <SubmitButton pendingLabel="Adding…">Add person</SubmitButton>
     </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Reset link for one person
-// ---------------------------------------------------------------------------
-
-export function ResetLinkPanel({ userId, name }: { userId: string; name: string }) {
-  const [state, action] = useActionState<LinkState, FormData>(generateResetLink, {});
-
-  return (
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="userId" value={userId} />
-      <div>
-        <label className="hs-label" htmlFor="reset-reason">
-          Reason <span className="text-faint">(goes in the audit log)</span>
-        </label>
-        <input
-          id="reset-reason"
-          name="reason"
-          maxLength={300}
-          placeholder={`e.g. ${name} forgot their password`}
-          className="hs-input"
-        />
-      </div>
-      <Feedback state={state} />
-      {state.url ? <LinkResult url={state.url} /> : null}
-      <SubmitButton className="hs-btn hs-btn-secondary" pendingLabel="Making a link…">
-        {state.url ? "Make a new link" : "Generate reset link"}
-      </SubmitButton>
-    </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Recovery requests
-// ---------------------------------------------------------------------------
-
-export type RecoveryRow = {
-  id: string;
-  kind: string;
-  contact: string;
-  name: string | null;
-  message: string | null;
-  matchedUserId: string | null;
-  createdAt: string;
-};
-
-export function RecoveryDecision({
-  request,
-  people,
-}: {
-  request: RecoveryRow;
-  people: { id: string; label: string }[];
-}) {
-  const [approved, approve] = useActionState<LinkState, FormData>(approveRecovery, {});
-  const [denied, deny] = useActionState<FormState, FormData>(denyRecovery, {});
-
-  if (approved.url) {
-    return (
-      <div className="space-y-2">
-        <Feedback state={approved} />
-        <LinkResult url={approved.url} />
-      </div>
-    );
-  }
-  if (denied.ok) return <Feedback state={denied} />;
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <form action={approve} className="space-y-2">
-        <input type="hidden" name="id" value={request.id} />
-        <label className="hs-label" htmlFor={`who-${request.id}`}>
-          Whose account is it?
-        </label>
-        <select
-          id={`who-${request.id}`}
-          name="userId"
-          defaultValue={request.matchedUserId ?? ""}
-          className="hs-input"
-          required
-        >
-          <option value="">Pick a person…</option>
-          {people.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        <Feedback state={approved} />
-        <SubmitButton className="hs-btn hs-btn-primary" pendingLabel="Approving…">
-          Approve and make reset link
-        </SubmitButton>
-      </form>
-      <form action={deny} className="space-y-2">
-        <input type="hidden" name="id" value={request.id} />
-        <label className="hs-label" htmlFor={`why-${request.id}`}>
-          Reason to deny
-        </label>
-        <input id={`why-${request.id}`} name="reason" maxLength={500} className="hs-input" placeholder="e.g. not on the team" />
-        <Feedback state={denied} />
-        <SubmitButton className="hs-btn hs-btn-ghost" pendingLabel="Denying…">
-          Deny
-        </SubmitButton>
-      </form>
-    </div>
   );
 }

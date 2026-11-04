@@ -6,17 +6,17 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { requireViewer, isAdmin } from "@/lib/authorize";
 import { emailSchema, generateCode, normalizeEmail, usernameSchema } from "@/lib/auth";
-import { RESET_TTL_HOURS, TIER_LABEL, TIER_ORDER } from "@/lib/constants";
+import { TIER_LABEL, TIER_ORDER } from "@/lib/constants";
 import { RULES, rateLimit, retryMessage } from "@/lib/rate-limit";
-import { appOrigin, clientIp, displayIp, looksAutomated } from "@/lib/request";
+import { appOrigin, clientIp, looksAutomated } from "@/lib/request";
 import type { FormState } from "@/lib/actions/auth";
 import { mailEnabled, resetEmail, sendMail } from "@/lib/mail";
-import type { RecoveryKind, Tier } from "@prisma/client";
+import type { Tier } from "@prisma/client";
 import type { Viewer } from "@/lib/policy";
 
 /**
- * People: adding someone, handing out reset links, and the account recovery
- * queue. Admin and owner only, except `requestRecovery`, which is public.
+ * Admin account creation and public email-only password recovery.
+ * Reset tokens are emailed to account holders, never returned to admins.
  */
 
 const TIERS = ["T0_ADVISOR", "T1_MEMBER", "T2_HEAD", "T3_ADMIN", "T4_OWNER"] as const satisfies readonly Tier[];
@@ -24,7 +24,7 @@ const TIERS = ["T0_ADVISOR", "T1_MEMBER", "T2_HEAD", "T3_ADMIN", "T4_OWNER"] as 
 const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
-export type LinkState = FormState & { url?: string };
+export type LinkState = FormState;
 
 function displayName(user: { name: string; nickname?: string | null }): string {
   return user.nickname || user.name;
@@ -42,61 +42,6 @@ async function requireAdminViewer(action: string): Promise<Viewer> {
     throw new Error("Only admins and owners can do that.");
   }
   return viewer;
-}
-
-/**
- * Burn any open reset links for the person and issue a new one. Returns the
- * absolute URL to hand over; the code itself is never written to the audit log.
- */
-async function issueResetFor(
-  viewer: Viewer,
-  userId: string,
-  reason: string,
-): Promise<{ url: string; resetId: string } | { error: string }> {
-  const target = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, name: true, nickname: true, tier: true, deletedAt: true },
-  });
-  if (!target || target.deletedAt) return { error: "That person no longer exists." };
-  if (TIER_ORDER[target.tier] > TIER_ORDER[viewer.tier]) {
-    await audit(viewer.id, "password.reset.denied", {
-      result: "denied",
-      type: "user",
-      id: userId,
-      detail: `Refused a reset link for ${displayName(target)}: their tier is above yours.`,
-    });
-    return { error: "You cannot issue a reset link for somebody above your own tier." };
-  }
-
-  await db.passwordReset.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } });
-  const reset = await db.passwordReset.create({
-    data: {
-      userId,
-      code: generateCode(),
-      issuedById: viewer.id,
-      expiresAt: new Date(Date.now() + RESET_TTL_HOURS * 60 * 60 * 1000),
-    },
-  });
-
-  await audit(viewer.id, "password.reset.issued", {
-    type: "user",
-    id: userId,
-    detail: `${displayName(viewer)} issued a password reset link for ${displayName(target)}. Reason: ${reason}`.slice(0, 1000),
-  });
-
-  return { url: `${await appOrigin()}/reset/${reset.code}`, resetId: reset.id };
-}
-
-/** Tell every active admin and owner something, in the portal. */
-async function noticeAdmins(title: string, body: string, href: string): Promise<void> {
-  const admins = await db.user.findMany({
-    where: { tier: { in: ["T3_ADMIN", "T4_OWNER"] }, isActive: true, deletedAt: null },
-    select: { id: true },
-  });
-  if (admins.length === 0) return;
-  await db.portalNotice.createMany({
-    data: admins.map((a) => ({ userId: a.id, title: title.slice(0, 190), body, href })),
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -184,60 +129,14 @@ export async function addPerson(_prev: LinkState, formData: FormData): Promise<L
     detail: `${displayName(viewer)} added ${d.name} (${d.email}) as ${TIER_LABEL[d.tier]}${d.roleTitle ? `, ${d.roleTitle}` : ""}.`,
   });
 
-  const link = await issueResetFor(viewer, user.id, "first-time password setup for a newly added person");
+  const sent = mailEnabled() && await emailResetLink(user.email);
   revalidatePath("/people");
-  if ("error" in link) return { ok: `${d.name} was added, but no setup link could be made: ${link.error}` };
-  return {
-    ok: `${d.name} is in. Send them this link to choose a password (valid ${RESET_TTL_HOURS} hours).`,
-    url: link.url,
-  };
+  return { ok: sent ? "Person added. A password setup link was emailed directly to them." : "Person added. They can use Forgot password to receive their setup link." };
 }
-
-// ---------------------------------------------------------------------------
-// Reset link for one person
-// ---------------------------------------------------------------------------
-
-export async function generateResetLink(_prev: LinkState, formData: FormData): Promise<LinkState> {
-  const viewer = await requireAdminViewer("issue a password reset link");
-  const limit = rateLimit(`write:${viewer.id}`, RULES.write);
-  if (!limit.ok) return { error: retryMessage(limit.retryAfter) };
-
-  const userId = String(formData.get("userId") ?? "");
-  const reason = String(formData.get("reason") ?? "").trim().slice(0, 300) || "issued from the People page";
-
-  const link = await issueResetFor(viewer, userId, reason);
-  if ("error" in link) return { error: link.error };
-
-  revalidatePath(`/people/${userId}`);
-  return {
-    ok: `Reset link ready. It works once and expires in ${RESET_TTL_HOURS} hours. Opening it signs out their other devices.`,
-    url: link.url,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Account recovery: public request, admin decision
-// ---------------------------------------------------------------------------
-
-const KINDS = ["USERNAME", "PASSWORD", "EMAIL", "OTHER"] as const satisfies readonly RecoveryKind[];
-
-const KIND_LABEL: Record<RecoveryKind, string> = {
-  USERNAME: "forgot their username",
-  PASSWORD: "forgot their password",
-  EMAIL: "forgot which email they use",
-  OTHER: "needs help signing in",
-};
-
-const recoverySchema = z.object({
-  kind: z.enum(KINDS),
-  contact: z.string().trim().min(3, "Tell us an email or your full name.").max(190),
-  name: z.string().trim().max(120).optional().or(z.literal("")),
-  message: z.string().trim().max(1000, "Keep the message under 1000 characters.").optional().or(z.literal("")),
-});
 
 const EMAIL_RESET_MINUTES = 30;
 
-/** Returns true when the request is handled (sent, or quietly skipped), false to fall back to admins. */
+/** Returns true when the request is handled (sent, or quietly skipped), false when email sending fails. */
 async function emailResetLink(email: string): Promise<boolean> {
   const perEmail = rateLimit(`recovery-mail:${email}`, RULES.recovery);
   if (!perEmail.ok) return true;
@@ -279,152 +178,15 @@ async function emailResetLink(email: string): Promise<boolean> {
 }
 
 export async function requestRecovery(_prev: FormState, formData: FormData): Promise<FormState> {
+  const success = "If that email has an active account, we sent a password reset link. Check your inbox, Junk and Spam folders. The link expires in 30 minutes.";
   const ip = await clientIp();
-  const thanks =
-    "Thanks. An admin will look at your request and get back to you with a reset link. You can close this page.";
-
   const limit = rateLimit(`recovery:${ip}`, RULES.recovery);
-  if (!limit.ok) {
-    await audit(null, "recovery.rate_limited", {
-      result: "denied",
-      type: "recovery",
-      detail: "A recovery request was refused because the connection sent too many.",
-    });
-    return { error: retryMessage(limit.retryAfter) };
-  }
-
-  if (looksAutomated(formData)) {
-    await audit(null, "recovery.bot_blocked", {
-      result: "denied",
-      type: "recovery",
-      detail: "A recovery request looked automated and was dropped.",
-    });
-    return { ok: thanks };
-  }
-
-  const parsed = recoverySchema.safeParse({
-    kind: formData.get("kind") ?? "PASSWORD",
-    contact: formData.get("contact") ?? "",
-    name: formData.get("name") ?? "",
-    message: formData.get("message") ?? "",
-  });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const d = parsed.data;
-
-  // Best-effort match so the admin sees who it probably is. Never revealed to
-  // the requester: the answer is the same whether or not anyone matched.
-  const contact = d.contact.includes("@") ? normalizeEmail(d.contact) : d.contact;
-  const match = await db.user.findFirst({
-    where: {
-      deletedAt: null,
-      OR: [
-        { email: contact },
-        { username: contact.toLowerCase() },
-        { name: d.name || contact },
-        { name: contact },
-      ],
-    },
-    select: { id: true },
-  });
-
-  // Self-service: a forgotten password for an exact email match gets the reset
-  // link by email. Same reply either way, so the form never reveals accounts.
-  if (d.kind === "PASSWORD" && d.contact.includes("@") && mailEnabled()) {
-    const mailed = await emailResetLink(contact);
-    if (mailed) return { ok: "If that email has an account, we sent a reset link to it. Check your inbox and spam folder." };
-  }
-
-  const request = await db.recoveryRequest.create({
-    data: {
-      kind: d.kind,
-      contact: d.contact,
-      name: d.name || null,
-      message: d.message || null,
-      matchedUserId: match?.id ?? null,
-      ip: (await displayIp())?.slice(0, 64) ?? null,
-    },
-  });
-
-  const who = d.name || d.contact;
-  await audit(null, "recovery.requested", {
-    type: "recovery",
-    id: request.id,
-    detail: `${who} ${KIND_LABEL[d.kind]} and asked for help.${match ? "" : " No account matched what they typed."}`.slice(0, 1000),
-  });
-  await noticeAdmins(
-    `Account recovery: ${who} ${KIND_LABEL[d.kind]}`,
-    d.message || "No message.",
-    "/people?tab=requests",
-  );
-
-  return { ok: thanks };
-}
-
-export async function approveRecovery(_prev: LinkState, formData: FormData): Promise<LinkState> {
-  const viewer = await requireAdminViewer("approve an account recovery request");
-  const id = String(formData.get("id") ?? "");
-  const userId = String(formData.get("userId") ?? "");
-
-  const req = await db.recoveryRequest.findUnique({ where: { id } });
-  if (!req || req.status !== "PENDING") return { error: "That request has already been handled." };
-  if (!userId) return { error: "Pick whose account this is first." };
-
-  const link = await issueResetFor(viewer, userId, `approved account recovery request from ${req.name || req.contact}`);
-  if ("error" in link) return { error: link.error };
-
-  const claimed = await db.recoveryRequest.updateMany({
-    where: { id, status: "PENDING" },
-    data: {
-      status: "APPROVED",
-      resolvedById: viewer.id,
-      resolvedAt: new Date(),
-      matchedUserId: userId,
-      resetId: link.resetId,
-      resolution: "Reset link issued.",
-    },
-  });
-  if (claimed.count === 0) return { error: "Somebody else handled that request a moment ago." };
-
-  const user = await db.user.findUnique({ where: { id: userId }, select: { email: true, username: true } });
-  await audit(viewer.id, "recovery.approved", {
-    type: "recovery",
-    id,
-    detail: `${displayName(viewer)} approved the recovery request from ${req.name || req.contact} and issued a reset link.`,
-  });
-
-  revalidatePath("/people");
-  return {
-    ok: `Approved. Send this link to ${req.contact}. Their email is ${user?.email ?? "unknown"}${user?.username ? `, username ${user.username}` : ""}.`,
-    url: link.url,
-  };
-}
-
-export async function denyRecovery(_prev: FormState, formData: FormData): Promise<FormState> {
-  const viewer = await requireAdminViewer("deny an account recovery request");
-  const id = String(formData.get("id") ?? "");
-  const reason = String(formData.get("reason") ?? "").trim().slice(0, 500) || "No reason given.";
-
-  const req = await db.recoveryRequest.findUnique({ where: { id } });
-  const claimed = await db.recoveryRequest.updateMany({
-    where: { id, status: "PENDING" },
-    data: { status: "DENIED", resolvedById: viewer.id, resolvedAt: new Date(), resolution: reason },
-  });
-  if (!req || claimed.count === 0) return { error: "That request has already been handled." };
-
-  await audit(viewer.id, "recovery.denied", {
-    type: "recovery",
-    id,
-    detail: `${displayName(viewer)} denied the recovery request from ${req.name || req.contact}. Reason: ${reason}`,
-  });
-  revalidatePath("/people");
-  return { ok: "Denied." };
-}
-
-/** Marks this viewer's recovery notices read once they open the Requests tab. */
-export async function markRecoveryNoticesRead(): Promise<void> {
-  const viewer = await requireViewer();
-  await db.portalNotice.updateMany({
-    where: { userId: viewer.id, readAt: null, href: "/people?tab=requests" },
-    data: { readAt: new Date() },
-  });
+  if (!limit.ok) return { error: retryMessage(limit.retryAfter) };
+  if (looksAutomated(formData)) return { ok: success };
+  const parsed = emailSchema.safeParse(formData.get("email") ?? "");
+  if (!parsed.success) return { error: "Enter the email address on your portal account." };
+  if (!mailEnabled()) return { error: "Password reset email is temporarily unavailable. Please try again later." };
+  const sent = await emailResetLink(normalizeEmail(parsed.data));
+  if (!sent) return { error: "We could not send the reset email right now. Please try again shortly." };
+  return { ok: success };
 }

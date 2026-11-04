@@ -64,10 +64,10 @@ export default async function HelpPage() {
               q: "I forgot my password.",
               a: (
                 <>
-                  There is no self-service reset, because the portal sends no email. Ask an admin:
-                  they generate a one-time link from the admin panel and hand it to you directly.
-                  The link works once, expires in two days, and signs out every other device on
-                  your account when you use it.
+                  Choose Forgot password on the sign-in page and enter your account email.
+                  A reset link is emailed directly to you. Check your inbox, Junk and Spam
+                  folders closely. The link works once, expires in 30 minutes, and signs out
+                  your other devices when you use it. Admins cannot issue or copy reset links.
                 </>
               ),
             },

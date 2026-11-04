@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { assertCan, requireViewer, isAdmin } from "@/lib/authorize";
 import { emailSchema, generateCode } from "@/lib/auth";
-import { INVITE_TTL_DAYS, RESET_TTL_HOURS, TIER_ORDER, tierForRole } from "@/lib/constants";
+import { INVITE_TTL_DAYS, TIER_ORDER, tierForRole } from "@/lib/constants";
 import { RULES, rateLimit, retryMessage } from "@/lib/rate-limit";
 import type { FormState } from "@/lib/actions/auth";
 import type { Tier } from "@prisma/client";
@@ -89,7 +89,7 @@ export async function createInvite(
 
   const existing = await db.user.findUnique({ where: { email: d.email } });
   if (existing?.passwordHash) {
-    return { error: "That person already has an account. Issue a password reset instead." };
+    return { error: "That person already has an account. They can use Forgot password to receive a reset email." };
   }
 
   const invite = await db.invite.create({
@@ -248,39 +248,6 @@ export async function unlockUser(userId: string): Promise<void> {
     data: { failedLogins: 0, lockedUntil: null },
   });
   await audit(viewer.id, "user.unlocked", { type: "user", id: userId });
-  revalidatePath("/admin");
-}
-
-/**
- * Admin-issued password reset. Generates a one-time link that T4 hands over in
- * person or on LINE. No email service, so no SMTP credentials in the
- * deployment — a deliberate trade from the build plan.
- */
-export async function issuePasswordReset(userId: string): Promise<void> {
-  const viewer = await requireViewer();
-  assertCan(viewer, "manage_users", { kind: "user", userId });
-
-  const target = await db.user.findUnique({ where: { id: userId }, select: { tier: true } });
-  if (!target) return;
-  // A reset link is a way into an account. Nobody issues one for a tier above
-  // their own.
-  if (TIER_ORDER[target.tier] > TIER_ORDER[viewer.tier]) return;
-
-  await db.passwordReset.updateMany({
-    where: { userId, usedAt: null },
-    data: { usedAt: new Date() },
-  });
-
-  await db.passwordReset.create({
-    data: {
-      userId,
-      code: generateCode(),
-      issuedById: viewer.id,
-      expiresAt: new Date(Date.now() + RESET_TTL_HOURS * 60 * 60 * 1000),
-    },
-  });
-
-  await audit(viewer.id, "password.reset.issued", { type: "user", id: userId });
   revalidatePath("/admin");
 }
 

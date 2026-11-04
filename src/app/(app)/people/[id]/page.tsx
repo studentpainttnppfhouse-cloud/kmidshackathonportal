@@ -10,7 +10,6 @@ import { formatDate, formatDateLong, isOverdue, relativeDue } from "@/lib/dates"
 import { decryptField } from "@/lib/crypto";
 import { swatchStyle } from "@/lib/color";
 import { STATUS_LABEL, STATUS_ORDER, TIER_ORDER } from "@/lib/constants";
-import { ResetLinkPanel } from "../people-widgets";
 import { Attachments } from "@/components/attachments";
 import { listAttachments } from "@/lib/attachment-access";
 import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
@@ -158,17 +157,6 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       ),
     });
   }
-  if (canManage) {
-    settings.push({
-      key: "password",
-      label: "Reset password",
-      hint: person.passwordHash ? "Has a password" : "No password yet",
-      title: "Password reset",
-      description: `${person.passwordHash ? "Has a password." : "Has not set a password yet."} The link works once and you send it yourself.`,
-      content: <ResetLinkPanel userId={person.id} name={display} />,
-    });
-  }
-
   const deptColor = person.department?.color ?? "#EC4899";
 
   return (

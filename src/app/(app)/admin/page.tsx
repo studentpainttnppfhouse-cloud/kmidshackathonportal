@@ -3,7 +3,6 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireTier, isOwner } from "@/lib/authorize";
 import {
-  issuePasswordReset,
   revokeAllSessionsFor,
   revokeInvite,
   unlockUser,
@@ -30,7 +29,7 @@ export default async function AdminPage() {
   const viewer = await requireTier("T3_ADMIN");
   const owner = isOwner(viewer);
 
-  const [users, invites, departments, resets, sessionCount, deletedCounts, settings, joinLinks] = await Promise.all([
+  const [users, invites, departments, sessionCount, deletedCounts, settings, joinLinks] = await Promise.all([
     db.user.findMany({
       where: { deletedAt: null },
       include: {
@@ -48,11 +47,6 @@ export default async function AdminPage() {
       orderBy: { createdAt: "desc" },
     }),
     db.department.findMany({ orderBy: { sortOrder: "asc" } }),
-    db.passwordReset.findMany({
-      where: { usedAt: null, expiresAt: { gt: new Date() } },
-      include: { user: { select: { name: true, nickname: true, email: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
     db.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
     Promise.all([
       db.assignment.count({ where: { deletedAt: { not: null } } }),
@@ -172,30 +166,6 @@ export default async function AdminPage() {
           </ul>
         )}
       </Card>
-
-      {resets.length > 0 ? (
-        <Card>
-          <SectionTitle>Open password resets</SectionTitle>
-          <ul className="space-y-2">
-            {resets.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn-edge bg-warn-soft p-3"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-ink">
-                    {r.user.nickname || r.user.name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {r.user.email} · expires {formatDateLong(r.expiresAt)}
-                  </p>
-                </div>
-                <CopyLink path={`/reset/${r.code}`} label="Copy reset link" />
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
 
       <Card>
         <SectionTitle>Portal panels</SectionTitle>
@@ -337,19 +307,6 @@ export default async function AdminPage() {
 
                     {owner ? (
                       <>
-                        <form
-                          action={async () => {
-                            "use server";
-                            await issuePasswordReset(u.id);
-                          }}
-                        >
-                          <button
-                            type="submit"
-                            className="hs-btn hs-btn-secondary px-3 py-1.5 text-xs"
-                          >
-                            Issue reset link
-                          </button>
-                        </form>
                         {u._count.sessions > 0 ? (
                           <form
                             action={async () => {
