@@ -10,6 +10,7 @@ import { RESET_TTL_HOURS, TIER_LABEL, TIER_ORDER } from "@/lib/constants";
 import { RULES, rateLimit, retryMessage } from "@/lib/rate-limit";
 import { appOrigin, clientIp, displayIp, looksAutomated } from "@/lib/request";
 import type { FormState } from "@/lib/actions/auth";
+import { mailEnabled, resetEmail, sendMail } from "@/lib/mail";
 import type { RecoveryKind, Tier } from "@prisma/client";
 import type { Viewer } from "@/lib/policy";
 
@@ -234,6 +235,49 @@ const recoverySchema = z.object({
   message: z.string().trim().max(1000, "Keep the message under 1000 characters.").optional().or(z.literal("")),
 });
 
+const EMAIL_RESET_MINUTES = 30;
+
+/** Returns true when the request is handled (sent, or quietly skipped), false to fall back to admins. */
+async function emailResetLink(email: string): Promise<boolean> {
+  const perEmail = rateLimit(`recovery-mail:${email}`, RULES.recovery);
+  if (!perEmail.ok) return true;
+
+  const user = await db.user.findUnique({
+    where: { email },
+    select: { id: true, name: true, nickname: true, email: true, isActive: true, deletedAt: true },
+  });
+  if (!user || user.deletedAt || !user.isActive) {
+    await audit(null, "recovery.email.no_account", {
+      type: "recovery",
+      detail: "A reset email was asked for an address with no active account. Nothing was sent.",
+    });
+    return true;
+  }
+
+  await db.passwordReset.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } });
+  const reset = await db.passwordReset.create({
+    data: {
+      userId: user.id,
+      code: generateCode(),
+      issuedById: user.id,
+      expiresAt: new Date(Date.now() + EMAIL_RESET_MINUTES * 60 * 1000),
+    },
+  });
+  const origin = await appOrigin();
+  const mail = resetEmail(displayName(user), `${origin}/reset/${reset.code}`, origin, EMAIL_RESET_MINUTES);
+  const sent = await sendMail(user.email, mail.subject, mail.html, mail.text);
+  if (!sent) {
+    await db.passwordReset.update({ where: { id: reset.id }, data: { usedAt: new Date() } });
+    return false;
+  }
+  await audit(user.id, "password.reset.emailed", {
+    type: "user",
+    id: user.id,
+    detail: `A password reset link was emailed to ${user.email}.`,
+  });
+  return true;
+}
+
 export async function requestRecovery(_prev: FormState, formData: FormData): Promise<FormState> {
   const ip = await clientIp();
   const thanks =
@@ -282,6 +326,13 @@ export async function requestRecovery(_prev: FormState, formData: FormData): Pro
     },
     select: { id: true },
   });
+
+  // Self-service: a forgotten password for an exact email match gets the reset
+  // link by email. Same reply either way, so the form never reveals accounts.
+  if (d.kind === "PASSWORD" && d.contact.includes("@") && mailEnabled()) {
+    const mailed = await emailResetLink(contact);
+    if (mailed) return { ok: "If that email has an account, we sent a reset link to it. Check your inbox and spam folder." };
+  }
 
   const request = await db.recoveryRequest.create({
     data: {
