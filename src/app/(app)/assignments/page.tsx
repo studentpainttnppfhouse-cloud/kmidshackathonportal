@@ -9,7 +9,7 @@ import { BoardView, ListView } from "./views";
 import { loadTasks } from "./query";
 import { TimingView } from "./timing-view";
 
-export const metadata: Metadata = { title: "Board" };
+export const metadata: Metadata = { title: "Assignments board" };
 export const dynamic = "force-dynamic";
 
 type View = "board" | "list" | "timing";
@@ -70,7 +70,7 @@ export default async function AssignmentsPage({
     <div className="hs-enter space-y-4">
       <PageHeader
         eyebrow="Tasks"
-        title="Board"
+        title="Assignments board"
         action={
           creatable.length > 0 ? (
             <Link
