@@ -1,7 +1,8 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { can, type Viewer } from "@/lib/policy";
+import { can, canSeePage, type Viewer } from "@/lib/policy";
 import { canRenderInline, isParentType, type ParentType } from "@/lib/attachments";
+import { canEditCalendarEvent } from "@/lib/calendar-access";
 import { safeHref } from "@/lib/url";
 
 /**
@@ -91,6 +92,23 @@ export async function resolveParent(
         canWrite: can(viewer, "update", resource),
         path: `/assignments/${parentId}`,
         label: "this task",
+      };
+    }
+
+    case "meeting": {
+      const event = await db.calendarEvent.findUnique({
+        where: { id: parentId },
+        select: { isMeeting: true, departmentId: true, createdById: true },
+      });
+      if (!event?.isMeeting) return DENIED(parentType, parentId);
+      return {
+        parentType,
+        parentId,
+        departmentId: event.departmentId,
+        canRead: canSeePage(viewer, "calendar"),
+        canWrite: canEditCalendarEvent(viewer, event.createdById),
+        path: "/calendar",
+        label: "this meeting",
       };
     }
 

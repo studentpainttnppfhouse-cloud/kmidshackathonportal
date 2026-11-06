@@ -6,11 +6,14 @@ import { requireViewer, can } from "@/lib/authorize";
 import { deleteAssignment } from "@/lib/actions/assignments";
 import { formatDateLong, isOverdue, relativeDue, timeAgo } from "@/lib/dates";
 import { AssignmentForm } from "@/components/assignment-form";
-import { Attachments } from "@/components/attachments";
+import { AttachmentList, Attachments } from "@/components/attachments";
 import { CommentForm } from "@/components/comments";
 import { StatusButtons } from "@/components/status-buttons";
 import { Avatar, Banner, Card, PriorityPill, SectionTitle, StatusPill } from "@/components/ui";
 import { listAttachments } from "@/lib/attachment-access";
+import { CaptionField } from "@/components/media-captions";
+import { canEditMediaCaptions } from "@/lib/media-handoff";
+import { safeHref } from "@/lib/url";
 import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
 
 export const metadata: Metadata = { title: "Task" };
@@ -40,6 +43,8 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
     ownerIds: a.assignees.map((x) => x.user.id),
   };
 
+  if (!can(viewer, "read", resource)) notFound();
+
   const mayEdit = can(viewer, "update", resource);
   const mayApprove = can(viewer, "approve", resource);
   const mayDelete = can(viewer, "delete", resource);
@@ -66,6 +71,19 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
     }),
     listAttachments("assignment", a.id),
   ]);
+
+  const source = a.mediaSourceId ? await db.assignment.findFirst({
+    where: { id: a.mediaSourceId, deletedAt: null, status: { in: ["APPROVED", "DONE"] } },
+    select: { id: true, title: true, linkUrl: true, departmentId: true, createdById: true,
+      assignees: { select: { userId: true } } },
+  }) : null;
+  const approvedSource = source && can(viewer, "read", {
+    kind: "assignment", departmentId: source.departmentId, createdById: source.createdById,
+    ownerIds: source.assignees.map(({ userId }) => userId),
+  }) ? source : null;
+  const approvedFiles = approvedSource ? await listAttachments("assignment", approvedSource.id) : [];
+  const sourceLink = safeHref(approvedSource?.linkUrl);
+  const mayCaption = a.department.slug === "social" && canEditMediaCaptions(viewer, a.departmentId);
 
   const overdue = isOverdue(a.dueDate, a.status);
 
@@ -184,6 +202,30 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
           hint="The brief, and the work sent back"
         />
       </Card>
+
+      {a.mediaSourceId ? (
+        <Card>
+          <SectionTitle>Approved media and captions</SectionTitle>
+          {approvedSource ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/assignments/${approvedSource.id}`} className="hs-btn hs-btn-secondary">
+                  Graphics assignment · {approvedSource.title}
+                </Link>
+                {sourceLink ? <a href={sourceLink} target="_blank" rel="noreferrer" className="hs-btn hs-btn-secondary">Open linked media ↗</a> : null}
+              </div>
+              {approvedFiles.length ? <AttachmentList attachments={approvedFiles} viewerId={viewer.id}
+                canWrite={false} allowRemoval={false} mediaDetails /> : null}
+              {!approvedFiles.length && !sourceLink ? <p className="text-sm text-muted">Graphics hasn’t attached media yet.</p> : null}
+              <p className="text-sm text-muted">Captions save as you type. Copy either language when you’re ready to post.</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <CaptionField assignmentId={a.id} language="th" initial={a.captionTh ?? ""} editable={mayCaption} />
+                <CaptionField assignmentId={a.id} language="en" initial={a.captionEn ?? ""} editable={mayCaption} />
+              </div>
+            </div>
+          ) : <p className="text-sm text-muted">The source assignment is awaiting approval or unavailable.</p>}
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>Comments</SectionTitle>

@@ -231,6 +231,9 @@ model Assignment {
   approvedAt   DateTime?
   linkUrl      String?          @db.Text
   recurrence   String?
+  mediaSourceId String?         @unique
+  captionTh     String?         @db.Text
+  captionEn     String?         @db.Text
   year         Int              @default(2027)
   sortOrder    Int              @default(0)
 
@@ -1047,6 +1050,11 @@ model AvatarImage {
 model CalendarEvent {
   id           String    @id @default(cuid())
   title        String    @db.VarChar(191)
+  isMeeting    Boolean   @default(false)
+  slidesUrl    String?   @db.Text
+  summary      String?   @db.Text
+  teamNextSteps Json?
+  nextSteps    String?   @db.Text
   notes        String?   @db.Text
   location     String?   @db.VarChar(191)
   startsAt     DateTime
