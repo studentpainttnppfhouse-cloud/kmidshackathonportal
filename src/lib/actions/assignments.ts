@@ -10,6 +10,7 @@ import { requireViewer } from "@/lib/authorize";
 import { optionalUrlSchema } from "@/lib/url";
 import { RULES, rateLimit, retryMessage } from "@/lib/rate-limit";
 import { notifyNewAssignment } from "@/lib/teams/notify";
+import { canEditMediaCaptions, handOffApprovedGraphics } from "@/lib/media-handoff";
 import type { FormState } from "@/lib/actions/auth";
 import type { AssignmentStatus, Priority } from "@prisma/client";
 
@@ -84,10 +85,11 @@ async function assignmentResource(id: string): Promise<Resource | null> {
     select: {
       departmentId: true,
       createdById: true,
+      deletedAt: true,
       assignees: { select: { userId: true } },
     },
   });
-  if (!a) return null;
+  if (!a || a.deletedAt) return null;
   return {
     kind: "assignment",
     departmentId: a.departmentId,
@@ -153,19 +155,25 @@ export async function createAssignment(_prev: FormState, formData: FormData): Pr
     });
   }
 
-  const created = await db.assignment.create({
-    data: {
-      title: d.title,
-      description: d.description || null,
-      departmentId: d.departmentId,
-      createdById: viewer.id,
-      dueDate: parseDue(d.dueDate),
-      priority: d.priority,
-      status: d.status,
-      linkUrl: d.linkUrl || null,
-      recurrence: d.recurrence || null,
-      assignees: { create: assigneeIds.map((userId) => ({ userId })) },
-    },
+  const created = await db.$transaction(async (tx) => {
+    const assignment = await tx.assignment.create({
+      data: {
+        title: d.title,
+        description: d.description || null,
+        departmentId: d.departmentId,
+        createdById: viewer.id,
+        dueDate: parseDue(d.dueDate),
+        priority: d.priority,
+        status: d.status,
+        approvedById: d.status === "APPROVED" || d.status === "DONE" ? viewer.id : null,
+        approvedAt: d.status === "APPROVED" || d.status === "DONE" ? new Date() : null,
+        linkUrl: d.linkUrl || null,
+        recurrence: d.recurrence || null,
+        assignees: { create: assigneeIds.map((userId) => ({ userId })) },
+      },
+    });
+    await handOffApprovedGraphics(tx, assignment, viewer.id);
+    return assignment;
   });
 
   await audit(viewer.id, "assignment.created", { type: "assignment", id: created.id, detail: d.title });
@@ -252,23 +260,26 @@ export async function updateAssignment(_prev: FormState, formData: FormData): Pr
     assertCan(viewer, "approve", resource);
   }
 
-  await db.assignment.update({
-    where: { id },
-    data: {
-      title: d.title,
-      description: d.description || null,
-      departmentId: d.departmentId,
-      dueDate: parseDue(d.dueDate),
-      priority: d.priority,
-      status: d.status,
-      linkUrl: d.linkUrl || null,
-      recurrence: d.recurrence || null,
-      approvedById: approving ? viewer.id : null,
-      approvedAt: approving ? new Date() : null,
-      ...(changed
-        ? { assignees: { deleteMany: {}, create: assigneeIds.map((userId) => ({ userId })) } }
-        : {}),
-    },
+  await db.$transaction(async (tx) => {
+    const assignment = await tx.assignment.update({
+      where: { id },
+      data: {
+        title: d.title,
+        description: d.description || null,
+        departmentId: d.departmentId,
+        dueDate: parseDue(d.dueDate),
+        priority: d.priority,
+        status: d.status,
+        linkUrl: d.linkUrl || null,
+        recurrence: d.recurrence || null,
+        approvedById: approving ? viewer.id : null,
+        approvedAt: approving ? new Date() : null,
+        ...(changed
+          ? { assignees: { deleteMany: {}, create: assigneeIds.map((userId) => ({ userId })) } }
+          : {}),
+      },
+    });
+    await handOffApprovedGraphics(tx, assignment, viewer.id);
   });
 
   await audit(viewer.id, "assignment.updated", { type: "assignment", id });
@@ -294,13 +305,16 @@ export async function setAssignmentStatus(id: string, status: AssignmentStatus):
     assertCan(viewer, "approve", resource);
   }
 
-  await db.assignment.update({
-    where: { id },
-    data: {
-      status,
-      approvedById: status === "APPROVED" || status === "DONE" ? viewer.id : null,
-      approvedAt: status === "APPROVED" || status === "DONE" ? new Date() : null,
-    },
+  await db.$transaction(async (tx) => {
+    const assignment = await tx.assignment.update({
+      where: { id },
+      data: {
+        status,
+        approvedById: status === "APPROVED" || status === "DONE" ? viewer.id : null,
+        approvedAt: status === "APPROVED" || status === "DONE" ? new Date() : null,
+      },
+    });
+    await handOffApprovedGraphics(tx, assignment, viewer.id);
   });
 
   await audit(viewer.id, `assignment.status.${status.toLowerCase()}`, {
@@ -311,6 +325,31 @@ export async function setAssignmentStatus(id: string, status: AssignmentStatus):
   revalidatePath("/assignments");
   revalidatePath(`/assignments/${id}`);
   revalidatePath("/dashboard");
+}
+
+export async function saveMediaCaption(id: string, language: "th" | "en", caption: string): Promise<FormState> {
+  const viewer = await requireViewer();
+  if (typeof id !== "string" || typeof caption !== "string" || caption.length > 10000 ||
+      (language !== "th" && language !== "en")) return { error: "Check the caption length." };
+  const social = await db.department.findUnique({ where: { slug: "social" }, select: { id: true } });
+  if (!social || !canEditMediaCaptions(viewer, social.id)) return { error: "You cannot edit these captions." };
+
+  const handoff = await db.assignment.findFirst({
+    where: { id, departmentId: social.id, deletedAt: null },
+    select: { mediaSourceId: true },
+  });
+  if (!handoff?.mediaSourceId) return { error: "This handoff is unavailable." };
+  const source = await db.assignment.findFirst({
+    where: { id: handoff.mediaSourceId, deletedAt: null, status: { in: ["APPROVED", "DONE"] } },
+    select: { id: true },
+  });
+  if (!source) return { error: "The Graphics assignment needs approval." };
+
+  const changed = await db.assignment.updateMany({
+    where: { id, mediaSourceId: source.id, departmentId: social.id, deletedAt: null },
+    data: language === "th" ? { captionTh: caption } : { captionEn: caption },
+  });
+  return changed.count ? { ok: "Saved" } : { error: "This handoff is unavailable." };
 }
 
 /** Soft delete only. Students delete things by accident; nothing is ever gone. */

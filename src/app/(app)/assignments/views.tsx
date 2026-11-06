@@ -148,10 +148,14 @@ export function CalendarView({
   items,
   month,
   events = [],
+  dayHref,
+  selectedDay,
 }: {
   items: AssignmentSummary[];
   month: Date;
   events?: CalendarEventChip[];
+  dayHref?: (day: number, eventId?: string) => string;
+  selectedDay?: number;
 }) {
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
@@ -173,7 +177,7 @@ export function CalendarView({
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
-  const today = new Date();
+  const today = dayHref ? new Date(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }) + "T12:00:00") : new Date();
   const isThisMonth = today.getFullYear() === year && today.getMonth() === monthIndex;
 
   return (
@@ -199,28 +203,28 @@ export function CalendarView({
             <div
               key={day}
               className={`min-h-[92px] rounded-lg border p-1.5 ${
-                isToday ? "border-brand bg-tint/60" : "border-line bg-surface"
+                isToday || day === selectedDay ? "border-brand bg-tint/60" : "border-line bg-surface"
               }`}
             >
-              <p
-                className={`mb-1 text-[11px] font-bold ${
-                  isToday ? "text-brand-deep" : "text-faint"
-                }`}
-              >
-                {day}
-              </p>
+              {dayHref ? (
+                <Link href={dayHref(day)} aria-label={`Meetings on day ${day}`}
+                  aria-current={day === selectedDay ? "date" : undefined}
+                  className="mb-1 inline-flex min-h-7 min-w-7 items-center justify-center rounded text-xs font-bold text-brand-deep hover:bg-tint">
+                  {day}
+                </Link>
+              ) : <p className="mb-1 text-[11px] font-bold text-faint">{day}</p>}
               <div className="space-y-1">
                 {dayEvents.map((e) => (
-                  <a
+                  <Link
                     key={e.id}
-                    href={`#event-${e.id}`}
+                    href={dayHref ? dayHref(day, e.id) : `#event-${e.id}`}
                     title={e.title}
-                    className="block truncate rounded border-l-2 bg-tint px-1.5 py-0.5 text-[11px] font-semibold text-ink"
-                    style={{ borderColor: e.color }}
+                    className="block truncate rounded bg-tint px-1.5 py-0.5 text-[11px] font-semibold text-ink"
                   >
                     {e.time ? `${e.time} ` : ""}
+                    <span aria-hidden="true" className="mr-1 inline-block h-1.5 w-1.5 rounded-full" style={{ background: e.color }} />
                     {e.title}
-                  </a>
+                  </Link>
                 ))}
                 {dayItems.slice(0, 3).map((a) => (
                   <Link

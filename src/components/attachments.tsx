@@ -87,6 +87,7 @@ export function Attachments({
         attachments={attachments}
         canWrite={canWrite}
         viewerId={viewerId}
+        mediaDetails={parentType === "assignment"}
       />
 
       {canWrite ? (
@@ -100,10 +101,14 @@ export function AttachmentList({
   attachments,
   canWrite,
   viewerId,
+  mediaDetails = false,
+  allowRemoval = true,
 }: {
   attachments: AttachmentItem[];
   canWrite: boolean;
   viewerId: string;
+  mediaDetails?: boolean;
+  allowRemoval?: boolean;
 }) {
   if (attachments.length === 0) {
     return <p className="text-sm text-faint">Nothing attached yet.</p>;
@@ -115,18 +120,18 @@ export function AttachmentList({
         <AttachmentRow
           key={file.id}
           file={file}
-          canRemove={canWrite || file.uploadedBy.id === viewerId}
+          canRemove={allowRemoval && (canWrite || file.uploadedBy.id === viewerId)}
+          mediaDetails={mediaDetails}
         />
       ))}
     </ul>
   );
 }
 
-function AttachmentRow({ file, canRemove }: { file: AttachmentItem; canRemove: boolean }) {
+function AttachmentRow({ file, canRemove, mediaDetails }: { file: AttachmentItem; canRemove: boolean; mediaDetails: boolean }) {
   const router = useRouter();
   const [removing, setRemoving] = useState(false);
   const linked = file.storage === "link";
-  const href = `/api/attachments/${file.id}`;
 
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
@@ -137,6 +142,7 @@ function AttachmentRow({ file, canRemove }: { file: AttachmentItem; canRemove: b
       <div className="min-w-0 flex-1">
         <FilePreviewButton
           file={file}
+          mediaDetails={mediaDetails}
           className="block max-w-full truncate text-left text-sm font-semibold text-ink hover:text-brand-deep"
         >
           {file.name}

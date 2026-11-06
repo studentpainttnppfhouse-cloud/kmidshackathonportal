@@ -76,6 +76,7 @@ export const PARENT_TYPES = [
   "announcement",
   "file",
   "form_response",
+  "meeting",
   "user",
   "brand_font",
   "brand_logo",

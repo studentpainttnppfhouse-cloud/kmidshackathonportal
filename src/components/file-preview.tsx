@@ -48,10 +48,12 @@ export function FilePreviewButton({
   file,
   className,
   children,
+  mediaDetails = false,
 }: {
   file: PreviewFile;
   className?: string;
   children: React.ReactNode;
+  mediaDetails?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -66,21 +68,24 @@ export function FilePreviewButton({
         description={file.storage === "link" ? "Stored elsewhere" : formatBytes(file.size)}
         size="xl"
       >
-        {open ? <PreviewBody file={file} /> : null}
+        {open ? <PreviewBody file={file} mediaDetails={mediaDetails} /> : null}
       </Modal>
     </>
   );
 }
 
-function PreviewBody({ file }: { file: PreviewFile }) {
+function PreviewBody({ file, mediaDetails }: { file: PreviewFile; mediaDetails: boolean }) {
   const kind = previewKind(file);
   const raw = `/api/attachments/${file.id}`;
   const inline = `${raw}?inline=1`;
-  const external = file.storage === "link" ? file.externalUrl : null;
+  const external = file.storage === "link" ? raw : null;
+  const [showImage, setShowImage] = useState(!mediaDetails);
+  const showPreview = !mediaDetails || (kind !== "video" && kind !== "link" && (kind !== "image" || showImage));
+  const embed = driveEmbed(file.externalUrl);
 
   return (
     <div className="space-y-3">
-      <div className="flex min-h-[200px] items-center justify-center overflow-hidden rounded-xl border border-line bg-tint/40">
+      {showPreview ? <div className="flex min-h-[200px] items-center justify-center overflow-hidden rounded-xl border border-line bg-tint/40">
         {kind === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={inline} alt={file.name} className="max-h-[70dvh] w-auto max-w-full object-contain" />
@@ -96,9 +101,9 @@ function PreviewBody({ file }: { file: PreviewFile }) {
           <DocxView src={raw} />
         ) : kind === "sheet" ? (
           <SheetView src={raw} />
-        ) : kind === "link" && driveEmbed(external) ? (
+        ) : kind === "link" && embed && !mediaDetails ? (
           <iframe
-            src={driveEmbed(external)!}
+            src={embed}
             title={file.name}
             className="h-[70dvh] w-full"
             allow="autoplay"
@@ -106,18 +111,21 @@ function PreviewBody({ file }: { file: PreviewFile }) {
         ) : (
           <NoPreview />
         )}
-      </div>
+      </div> : null}
 
       <div className="flex flex-wrap justify-end gap-2">
+        {kind === "image" && !showImage ? (
+          <button type="button" onClick={() => setShowImage(true)} className="hs-btn hs-btn-secondary">Preview</button>
+        ) : null}
         {external ? (
           <a href={external} target="_blank" rel="noreferrer noopener" className="hs-btn hs-btn-secondary">
-            Open in new tab ↗
+            Open online ↗
           </a>
         ) : (
           <>
             {kind === "image" || kind === "video" || kind === "audio" || kind === "pdf" || kind === "text" ? (
               <a href={inline} target="_blank" rel="noopener" className="hs-btn hs-btn-secondary">
-                Open in new tab ↗
+                Open online ↗
               </a>
             ) : null}
             <a href={raw} className="hs-btn hs-btn-primary">
