@@ -20,15 +20,15 @@ export async function saveEntry(_: FormState, f: FormData): Promise<FormState> {
   const v = await requirePageAccess("calendar", "edit");
   const limit = rateLimit(`write:${v.id}`, RULES.write);
   if (!limit.ok) return { error: retryMessage(limit.retryAfter) };
-  if (v.isAlumni || !atLeast(v, "T1_MEMBER"))
+  if (!v.isActive || v.deletedAt || v.isAlumni || !atLeast(v, "T1_MEMBER"))
     return { error: "Your account is read only." };
   const id = text(f, "id"),
     title = text(f, "title"),
     date = text(f, "date"),
     time = text(f, "time") || "09:00",
     end = text(f, "end");
-  const scope = text(f, "scope") || "private",
-    kind = text(f, "kind") || "event",
+  const kind = text(f, "kind") || "event";
+  const scope = kind === "meeting" ? "all" : text(f, "scope") || "private",
     departmentId = text(f, "departmentId") || null;
   const attendeeIds = [...new Set(f.getAll("attendeeIds").map(String))];
   if (
@@ -45,19 +45,28 @@ export async function saveEntry(_: FormState, f: FormData): Promise<FormState> {
     return { error: "Choose a valid event type and audience." };
   if (text(f, "body").length > 20000 || text(f, "location").length > 200)
     return { error: "Please shorten the notes or location." };
+  if (kind === "meeting" && !atLeast(v, "T2_HEAD"))
+    return {
+      error: "Heads, admins and owners manage meetings. Members can view them.",
+    };
   if (scope !== "private" && !atLeast(v, "T2_HEAD"))
     return { error: "Members can create personal events only." };
-  if (scope === "all" && !atLeast(v, "T3_ADMIN"))
+  if (kind !== "meeting" && scope === "all" && !atLeast(v, "T3_ADMIN"))
     return { error: "Only admins and owners can create portal-wide events." };
   if (scope === "department" && !departmentId)
     return { error: "Choose a team." };
   if (departmentId) {
     if (!(await db.department.findUnique({ where: { id: departmentId } })))
       return { error: "Team not found." };
-    if (!atLeast(v, "T3_ADMIN") && departmentId !== v.departmentId)
+    if (
+      kind !== "meeting" &&
+      !atLeast(v, "T3_ADMIN") &&
+      departmentId !== v.departmentId
+    )
       return { error: "Choose your own team." };
   }
   if (
+    kind !== "meeting" &&
     v.tier === "T2_HEAD" &&
     scope !== "private" &&
     departmentId !== v.departmentId
@@ -70,7 +79,7 @@ export async function saveEntry(_: FormState, f: FormData): Promise<FormState> {
   });
   if (
     people.length !== attendeeIds.length ||
-    people.some((p) => !canAssignPerson(v, p))
+    (kind !== "meeting" && people.some((p) => !canAssignPerson(v, p)))
   )
     return {
       error:
@@ -94,8 +103,19 @@ export async function saveEntry(_: FormState, f: FormData): Promise<FormState> {
     endsAt = new Date(end + ":00+07:00");
     if (endsAt <= startsAt) return { error: "End must be after start." };
   }
+  const teamNextSteps: Record<string, string> = {};
+  if (kind === "meeting") {
+    const teams = await db.department.findMany({ select: { id: true } });
+    for (const team of teams) {
+      const note = text(f, `team-${team.id}`);
+      if (note.length > 2000)
+        return { error: "Team next steps must be under 2,000 characters." };
+      if (note) teamNextSteps[team.id] = note;
+    }
+  }
   const data = {
     title,
+    ...(kind === "meeting" ? { teamNextSteps } : {}),
     allDay: f.get("allDay") === "on",
     summary: text(f, "summary").slice(0, 5000),
     nextSteps: text(f, "nextSteps").slice(0, 5000),
@@ -118,7 +138,10 @@ export async function saveEntry(_: FormState, f: FormData): Promise<FormState> {
   revalidatePath("/calendar");
   revalidatePath("/meetings");
   revalidatePath(`/calendar/${row.id}`);
-  redirect(`/calendar/${row.id}`);
+  revalidatePath(`/meetings/${row.id}`);
+  redirect(
+    row.kind === "meeting" ? `/meetings/${row.id}` : `/calendar/${row.id}`,
+  );
 }
 export async function removeEntry(id: string) {
   const v = await requirePageAccess("calendar", "edit");
@@ -131,13 +154,13 @@ export async function removeEntry(id: string) {
   await audit(v.id, "calendar.deleted", { type: "calendar", id });
   revalidatePath("/calendar");
   revalidatePath("/meetings");
-  redirect("/calendar");
+  redirect(e.kind === "meeting" ? "/meetings" : "/calendar");
 }
 export async function saveDrive(_: FormState, f: FormData): Promise<FormState> {
   const v = await requirePageAccess("documents", "edit");
   const limit = rateLimit(`write:${v.id}`, RULES.write);
   if (!limit.ok) return { error: retryMessage(limit.retryAfter) };
-  if (v.isAlumni || !atLeast(v, "T1_MEMBER"))
+  if (!v.isActive || v.deletedAt || v.isAlumni || !atLeast(v, "T1_MEMBER"))
     return { error: "Your account is read only." };
   const id = text(f, "id"),
     title = text(f, "title"),
@@ -156,26 +179,30 @@ export async function saveDrive(_: FormState, f: FormData): Promise<FormState> {
     !["document", "folder"].includes(kind)
   )
     return { error: "Choose a valid sharing option." };
-  if (scope === "department" && !departmentId)
-    return { error: "Choose a department to share with." };
-  if (
-    departmentId &&
-    !(await db.department.findUnique({ where: { id: departmentId } }))
-  )
-    return { error: "Team not found." };
-  if (scope === "people" && !sharedUserIds.length)
-    return { error: "Choose people to share with." };
-  const count = await db.user.count({
-    where: { id: { in: sharedUserIds }, isActive: true, deletedAt: null },
-  });
-  if (count !== sharedUserIds.length)
-    return { error: "One of those people is no longer active." };
+  const sharedDepartmentIds = [
+    ...new Set(f.getAll("sharedDepartmentIds").map(String)),
+  ];
+  const sharing = await validateDriveSharing(
+    scope,
+    sharedUserIds,
+    sharedDepartmentIds,
+    departmentId,
+  );
+  if (sharing.error) return sharing;
   if (id) {
     const old = await db.driveItem.findUnique({ where: { id } });
     if (!old || !canEditDrive(v, old))
       return { error: "Only the owner can edit or share this item." };
   }
-  const data = { title, body, scope, kind, departmentId, sharedUserIds };
+  const data = {
+    title,
+    body,
+    scope,
+    kind,
+    departmentId,
+    sharedUserIds,
+    sharedDepartmentIds,
+  };
   const row = id
     ? await db.driveItem.update({ where: { id }, data })
     : await db.driveItem.create({ data: { ...data, ownerId: v.id } });
@@ -187,6 +214,82 @@ export async function saveDrive(_: FormState, f: FormData): Promise<FormState> {
   revalidatePath(`/drive/${row.id}`);
   redirect(`/drive/${row.id}`);
 }
+async function validateDriveSharing(
+  scope: string,
+  userIds: string[],
+  departmentIds: string[],
+  departmentId: string | null,
+): Promise<FormState> {
+  if (!["private", "people", "department", "all"].includes(scope))
+    return { error: "Choose a sharing option." };
+  if (userIds.length > 500 || departmentIds.length > 50)
+    return { error: "Too many recipients." };
+  if (scope === "people" && !userIds.length && !departmentIds.length)
+    return { error: "Choose at least one person or team." };
+  if (scope === "department" && !departmentId)
+    return { error: "Choose a department." };
+  const teamIds = [
+    ...new Set([...departmentIds, ...(departmentId ? [departmentId] : [])]),
+  ];
+  const [users, teams] = await Promise.all([
+    db.user.count({
+      where: { id: { in: userIds }, isActive: true, deletedAt: null },
+    }),
+    db.department.count({ where: { id: { in: teamIds } } }),
+  ]);
+  return users === userIds.length && teams === teamIds.length
+    ? {}
+    : { error: "A recipient is no longer available. Reload and choose again." };
+}
+
+export async function shareDrive(
+  id: string,
+  _: FormState,
+  form: FormData,
+): Promise<FormState> {
+  const viewer = await requirePageAccess("documents", "edit");
+  const item = await db.driveItem.findUnique({ where: { id } });
+  if (!item || !canEditDrive(viewer, item))
+    return { error: "Only the owner can share this document." };
+  const scope = text(form, "scope");
+  const sharedUserIds = [...new Set(form.getAll("sharedUserIds").map(String))];
+  const sharedDepartmentIds = [
+    ...new Set(form.getAll("sharedDepartmentIds").map(String)),
+  ];
+  const validation = await validateDriveSharing(
+    scope,
+    sharedUserIds,
+    sharedDepartmentIds,
+    null,
+  );
+  if (validation.error) return validation;
+  await db.driveItem.update({
+    where: { id },
+    data: {
+      scope,
+      departmentId: null,
+      sharedUserIds: scope === "people" ? sharedUserIds : [],
+      sharedDepartmentIds: scope === "people" ? sharedDepartmentIds : [],
+    },
+  });
+  await audit(viewer.id, "drive.shared", { type: "drive", id });
+  revalidatePath("/drive");
+  revalidatePath(`/drive/${id}`);
+  return { ok: "Sharing updated." };
+}
+
+export async function recordDriveOpen(id: string): Promise<void> {
+  const viewer = await requirePageAccess("documents");
+  const item = await db.driveItem.findUnique({ where: { id } });
+  if (!item || !(await readDrive(viewer, item))) return;
+  await db.driveVisit.upsert({
+    where: { itemId_userId: { itemId: id, userId: viewer.id } },
+    create: { itemId: id, userId: viewer.id },
+    update: { openedAt: new Date() },
+  });
+  revalidatePath("/drive");
+}
+
 export async function listDriveChoices() {
   const v = await requirePageAccess("documents");
   return (await driveItems(v))

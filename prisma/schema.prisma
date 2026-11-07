@@ -1104,6 +1104,7 @@ model DriveItem {
   scope String @default("private") @db.VarChar(20)
   departmentId String?
   sharedUserIds Json?
+  sharedDepartmentIds Json?
   deletedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1121,4 +1122,13 @@ model DriveSubmission {
   @@unique([itemId, assignmentId])
   @@index([assignmentId])
   @@map("drive_submissions")
+}
+
+model DriveVisit {
+  itemId String
+  userId String
+  openedAt DateTime @default(now())
+  @@id([itemId, userId])
+  @@index([userId, openedAt])
+  @@map("drive_visits")
 }

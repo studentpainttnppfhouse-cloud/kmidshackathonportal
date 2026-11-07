@@ -112,3 +112,57 @@ test("Bangkok date boundaries and invalid days", () => {
   assert.equal(validDay("2028-02-29"), true);
   assert.equal(validDay("2027-13-01"), false);
 });
+
+test("all active members view meetings and every head can edit across departments", () => {
+  const meeting = {
+    ownerId: member.id,
+    departmentId: "other",
+    scope: "all",
+    kind: "meeting",
+    attendeeIds: [],
+  };
+  assert.equal(canReadEntry(member, meeting), true);
+  assert.equal(canEditEntry(member, meeting), false);
+  for (const viewer of [head, admin, owner]) {
+    assert.equal(canReadEntry(viewer, meeting), true);
+    assert.equal(canEditEntry(viewer, meeting), true);
+  }
+  assert.equal(canEditEntry({ ...head, isAlumni: true }, meeting), false);
+  assert.equal(
+    canEditEntry({ ...head, pageGrants: { calendar: "READ" } }, meeting),
+    false,
+  );
+  assert.equal(
+    canReadEntry({ ...member, pageGrants: { calendar: "NONE" } }, meeting),
+    false,
+  );
+});
+
+test("documents can be shared with multiple departments and named people without making them public", () => {
+  const shared = {
+    ...privateDoc,
+    ownerId: "writer",
+    scope: "people",
+    sharedUserIds: ["admin"],
+    sharedDepartmentIds: ["graphics", "social"],
+  };
+  assert.equal(canReadDrive(member, shared), true);
+  assert.equal(
+    canReadDrive({ ...member, departmentId: "social" }, shared),
+    true,
+  );
+  assert.equal(
+    canReadDrive({ ...member, departmentId: "operations" }, shared),
+    false,
+  );
+  assert.equal(
+    canReadDrive({ ...admin, departmentId: "operations" }, shared),
+    true,
+  );
+  assert.equal(canEditDrive(admin, shared), false);
+  assert.equal(
+    canReadDrive(member, { ...shared, sharedDepartmentIds: [] }),
+    false,
+  );
+  assert.equal(canReadDrive(admin, { ...shared, scope: "private" }), false);
+});

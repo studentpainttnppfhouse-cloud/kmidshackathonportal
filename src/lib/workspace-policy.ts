@@ -16,7 +16,7 @@ const writable = (v: Viewer) =>
   active(v) && !v.isAlumni && atLeast(v, "T1_MEMBER");
 export function canReadDrive(
   v: Viewer,
-  d: Shared & { sharedUserIds: unknown },
+  d: Shared & { sharedUserIds: unknown; sharedDepartmentIds?: unknown },
 ) {
   return (
     active(v) &&
@@ -27,7 +27,10 @@ export function canReadDrive(
       (d.scope === "department" &&
         !!d.departmentId &&
         d.departmentId === v.departmentId) ||
-      (d.scope === "people" && ids(d.sharedUserIds).includes(v.id)))
+      (d.scope === "people" &&
+        (ids(d.sharedUserIds).includes(v.id) ||
+          (!!v.departmentId &&
+            ids(d.sharedDepartmentIds).includes(v.departmentId)))))
   );
 }
 export function canEditDrive(v: Viewer, d: Shared) {
@@ -38,12 +41,16 @@ export function canEditDrive(v: Viewer, d: Shared) {
     d.ownerId === v.id
   );
 }
-export function canReadEntry(v: Viewer, e: Shared & { attendeeIds: unknown }) {
+export function canReadEntry(
+  v: Viewer,
+  e: Shared & { attendeeIds: unknown; kind?: string },
+) {
   return (
     active(v) &&
     !e.deletedAt &&
     canSeePage(v, "calendar") &&
-    (e.ownerId === v.id ||
+    (e.kind === "meeting" ||
+      e.ownerId === v.id ||
       (e.scope !== "private" &&
         (atLeast(v, "T3_ADMIN") ||
           (v.tier === "T2_HEAD" &&
@@ -56,8 +63,9 @@ export function canReadEntry(v: Viewer, e: Shared & { attendeeIds: unknown }) {
       ids(e.attendeeIds).includes(v.id))
   );
 }
-export function canEditEntry(v: Viewer, e: Shared) {
+export function canEditEntry(v: Viewer, e: Shared & { kind?: string }) {
   if (!writable(v) || e.deletedAt || !canEditPage(v, "calendar")) return false;
+  if (e.kind === "meeting") return atLeast(v, "T2_HEAD");
   if (e.scope === "private") return e.ownerId === v.id;
   return (
     atLeast(v, "T3_ADMIN") ||

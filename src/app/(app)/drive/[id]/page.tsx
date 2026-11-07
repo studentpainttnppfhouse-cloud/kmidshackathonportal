@@ -8,6 +8,7 @@ import { Attachments } from "@/components/attachments";
 import { listAttachments } from "@/lib/attachment-access";
 import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
 import { readDrive, canEditDrive, ids } from "@/lib/workspace-access";
+import { DriveOpenTracker, DriveShareButton } from "@/components/drive-sharing";
 import { renderMarkdown } from "@/lib/markdown";
 export default async function DrivePage({
   params,
@@ -22,23 +23,31 @@ export default async function DrivePage({
   const d = await db.driveItem.findUnique({ where: { id } });
   if (!d || !(await readDrive(v, d))) notFound();
   const editable = canEditDrive(v, d);
+  const [people, departments, owner] = await Promise.all([
+    db.user.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    db.department.findMany({
+      select: { id: true, name: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    db.user.findUnique({
+      where: { id: d.ownerId },
+      select: { name: true, nickname: true },
+    }),
+  ]);
   if (sp.edit && editable) {
-    const [people, departments] = await Promise.all([
-      db.user.findMany({
-        where: { isActive: true, deletedAt: null },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      db.department.findMany({
-        select: { id: true, name: true },
-        orderBy: { sortOrder: "asc" },
-      }),
-    ]);
     return (
       <div className="space-y-4">
         <PageHeader eyebrow="Workspace" title="Edit document" />
         <DriveForm
-          item={{ ...d, sharedUserIds: ids(d.sharedUserIds) }}
+          item={{
+            ...d,
+            sharedUserIds: ids(d.sharedUserIds),
+            sharedDepartmentIds: ids(d.sharedDepartmentIds),
+          }}
           people={people.filter((p) => p.id !== v.id)}
           departments={departments}
         />
@@ -48,25 +57,33 @@ export default async function DrivePage({
   const attachments = await listAttachments("drive", id);
   return (
     <div className="hs-enter space-y-4">
+      <DriveOpenTracker id={id} />
       <Link href="/drive" className="hs-btn hs-btn-secondary">
-        ← Portal drive
+        ← Documents
       </Link>
       <PageHeader
         eyebrow="Workspace"
         title={d.title}
-        subtitle={
-          d.scope === "private"
-            ? "Private · only you and any task recipients you explicitly submit to"
-            : `Shared: ${d.scope}`
-        }
+        subtitle={`Created by ${owner?.nickname || owner?.name || "former staff member"} · ${d.scope === "private" ? "Private" : d.scope === "all" ? "Shared with everyone" : "Shared with selected recipients"}`}
         action={
           editable ? (
-            <Link
-              href={`/drive/${id}?edit=1`}
-              className="hs-btn hs-btn-primary"
-            >
-              Edit / share
-            </Link>
+            <div className="flex gap-2">
+              <DriveShareButton
+                item={{
+                  ...d,
+                  sharedUserIds: ids(d.sharedUserIds),
+                  sharedDepartmentIds: ids(d.sharedDepartmentIds),
+                }}
+                people={people.filter((person) => person.id !== v.id)}
+                departments={departments}
+              />
+              <Link
+                href={`/drive/${id}?edit=1`}
+                className="hs-btn hs-btn-primary"
+              >
+                Edit document
+              </Link>
+            </div>
           ) : null
         }
       />
@@ -83,7 +100,7 @@ export default async function DrivePage({
               </a>
             ))}
           </div>
-          <article className="hs-card p-6">
+          <article className="mx-auto min-h-[42rem] max-w-[52rem] rounded border border-line bg-surface px-6 py-10 shadow-sm sm:px-14">
             <div
               className="hs-prose"
               dangerouslySetInnerHTML={{ __html: renderMarkdown(d.body ?? "") }}

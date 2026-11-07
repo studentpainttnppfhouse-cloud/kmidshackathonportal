@@ -1,4 +1,5 @@
-import { requirePageAccess } from "@/lib/authorize";
+import { requirePageAccess, atLeast } from "@/lib/authorize";
+import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { EntryForm } from "@/components/workspace-forms";
 import { PageHeader } from "@/components/ui";
@@ -11,6 +12,9 @@ export default async function NewEvent({
 }) {
   const v = await requirePageAccess("calendar", "edit");
   const sp = await searchParams;
+  const meeting = sp.kind === "meeting";
+  if (meeting && (!v.isActive || v.isAlumni || !atLeast(v, "T2_HEAD")))
+    redirect("/meetings");
   const [people, departments] = await Promise.all([
     db.user.findMany({
       where: { isActive: true, deletedAt: null },
@@ -20,16 +24,27 @@ export default async function NewEvent({
   ]);
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow="Workspace" title="New event" />
+      <PageHeader
+        eyebrow="Workspace"
+        title={meeting ? "New meeting" : "New event"}
+      />
       <EntryForm
-        entry={{ date: sp.date ?? bangkokDay(new Date()), kind: sp.kind }}
+        entry={{
+          date: sp.date ?? bangkokDay(new Date()),
+          kind: sp.kind,
+          scope: meeting ? "all" : undefined,
+        }}
         level={TIER_ORDER[v.tier]}
         ownDepartment={v.departmentId}
         people={people
-          .filter((p) => canAssignPerson(v, p))
-          .map((p) => ({ id: p.id, name: p.nickname || p.name }))}
+          .filter((p) => meeting || canAssignPerson(v, p))
+          .map((p) => ({
+            id: p.id,
+            name: p.nickname ? `${p.nickname} · ${p.name}` : p.name,
+            departmentId: p.departmentId,
+          }))}
         departments={departments.filter(
-          (d) => TIER_ORDER[v.tier] >= 3 || d.id === v.departmentId,
+          (d) => meeting || TIER_ORDER[v.tier] >= 3 || d.id === v.departmentId,
         )}
       />
     </div>

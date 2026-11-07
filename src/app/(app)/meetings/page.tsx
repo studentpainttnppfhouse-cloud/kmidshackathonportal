@@ -16,13 +16,13 @@ export default async function Meetings() {
       <PageHeader
         eyebrow="Workspace"
         title="Meetings"
-        subtitle="Agendas and notes, separate from the posting calendar."
+        subtitle="Agendas, slides, notes and next steps for every team."
         action={
-          atLeast(v, "T2_HEAD") && canEditPage(v, "calendar") ? (
-            <Link
-              href="/calendar/new?kind=meeting"
-              className="hs-btn hs-btn-primary"
-            >
+          v.isActive &&
+          !v.isAlumni &&
+          atLeast(v, "T2_HEAD") &&
+          canEditPage(v, "calendar") ? (
+            <Link href="/meetings/new" className="hs-btn hs-btn-primary">
               New meeting
             </Link>
           ) : null
@@ -35,7 +35,7 @@ export default async function Meetings() {
         entries.map((e) => (
           <Link
             key={e.id}
-            href={`/calendar/${e.id}`}
+            href={`/meetings/${e.id}`}
             className="hs-card block p-4"
           >
             <span className="text-xs text-muted">

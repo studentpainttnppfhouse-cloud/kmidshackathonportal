@@ -8,8 +8,9 @@ import {
 } from "@/lib/actions/workspace";
 import { Feedback, SubmitButton } from "./form-bits";
 import { renderMarkdown } from "@/lib/markdown";
+import { SharingFields } from "./drive-sharing";
 import type { FormState } from "@/lib/actions/auth";
-type Choice = { id: string; name: string };
+type Choice = { id: string; name: string; departmentId?: string | null };
 export function EntryForm({
   entry,
   people,
@@ -32,6 +33,7 @@ export function EntryForm({
     allDay?: boolean;
     summary?: string | null;
     nextSteps?: string | null;
+    teamNextSteps?: unknown;
   };
   people: Choice[];
   departments: Choice[];
@@ -39,6 +41,18 @@ export function EntryForm({
   ownDepartment: string | null;
 }) {
   const [state, action] = useActionState(saveEntry, {} as FormState);
+  const [kind, setKind] = useState(entry?.kind ?? "event");
+  const [team, setTeam] = useState(entry?.departmentId ?? ownDepartment ?? "");
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [scope, setScope] = useState(
+    entry?.scope ?? (kind === "meeting" ? "all" : "private"),
+  );
+  const teamNotes =
+    entry?.teamNextSteps &&
+    typeof entry.teamNextSteps === "object" &&
+    !Array.isArray(entry.teamNextSteps)
+      ? (entry.teamNextSteps as Record<string, string>)
+      : {};
   return (
     <form action={action} className="hs-card space-y-4 p-5">
       <input type="hidden" name="id" value={entry?.id ?? ""} />
@@ -87,38 +101,48 @@ export function EntryForm({
         Type
         <select
           name="kind"
-          defaultValue={entry?.kind ?? "event"}
+          value={kind}
+          onChange={(event) => setKind(event.target.value)}
           className="hs-input"
         >
           <option value="event">Event</option>
-          <option value="meeting">Meeting</option>
-          <option value="post">Instagram post</option>
+          {level >= 2 ? <option value="meeting">Meeting</option> : null}
+          <option value="post">Social media post</option>
         </select>
       </label>
-      <label className="hs-label">
-        Visibility
-        <select
-          name="scope"
-          defaultValue={entry?.scope ?? "private"}
-          className="hs-input"
-        >
-          <option value="private">Only me</option>
-          {level >= 2 ? (
-            <>
-              <option value="people">Selected people</option>
-              <option value="department">Team</option>
-            </>
-          ) : null}
-          {level >= 3 ? <option value="all">Everyone</option> : null}
-        </select>
-      </label>
+      {kind === "meeting" ? (
+        <p className="text-sm text-muted">
+          Everyone on the portal can view meetings. Heads, admins and owners can
+          edit the agenda and notes.
+        </p>
+      ) : (
+        <label className="hs-label">
+          Visibility
+          <select
+            name="scope"
+            value={scope}
+            onChange={(event) => setScope(event.target.value)}
+            className="hs-input"
+          >
+            <option value="private">Only me</option>
+            {level >= 2 ? (
+              <>
+                <option value="people">Selected people</option>
+                <option value="department">Team</option>
+              </>
+            ) : null}
+            {level >= 3 ? <option value="all">Everyone</option> : null}
+          </select>
+        </label>
+      )}
       {level >= 2 ? (
         <>
           <label className="hs-label">
             Team
             <select
               name="departmentId"
-              defaultValue={entry?.departmentId ?? ownDepartment ?? ""}
+              value={team}
+              onChange={(event) => setTeam(event.target.value)}
               className="hs-input"
             >
               <option value="">No team</option>
@@ -130,15 +154,44 @@ export function EntryForm({
             </select>
           </label>
           <fieldset>
-            <legend className="hs-label">Assign attendees</legend>
+            <legend className="hs-label">
+              {kind === "meeting" ? "Attendees" : "Assign people"}
+            </legend>
+            {kind !== "meeting" && scope === "private" ? (
+              <p className="mb-2 text-xs text-muted">
+                Choose Team or Selected people above to assign this event to
+                staff.
+              </p>
+            ) : null}
+            <input
+              type="search"
+              aria-label="Find an attendee"
+              value={peopleQuery}
+              onChange={(event) => setPeopleQuery(event.target.value)}
+              placeholder="Search staff names"
+              className="hs-input mb-2"
+            />
             <div className="grid max-h-44 gap-2 overflow-auto sm:grid-cols-2">
               {people.map((p) => (
-                <label key={p.id} className="text-sm">
+                <label
+                  key={p.id}
+                  hidden={
+                    !p.name
+                      .toLocaleLowerCase()
+                      .includes(peopleQuery.toLocaleLowerCase()) ||
+                    (kind !== "meeting" &&
+                      !!team &&
+                      p.departmentId !== team &&
+                      !entry?.attendeeIds?.includes(p.id))
+                  }
+                  className="text-sm"
+                >
                   <input
                     type="checkbox"
                     name="attendeeIds"
                     value={p.id}
                     defaultChecked={entry?.attendeeIds?.includes(p.id)}
+                    disabled={kind !== "meeting" && scope === "private"}
                   />{" "}
                   {p.name}
                 </label>
@@ -170,28 +223,56 @@ export function EntryForm({
           className="hs-input"
         />
       </label>
-      <label className="hs-label">
-        Meeting summary
-        <textarea
-          name="summary"
-          rows={3}
-          maxLength={5000}
-          defaultValue={entry?.summary ?? ""}
-          className="hs-input"
-        />
-      </label>
-      <label className="hs-label">
-        Next steps
-        <textarea
-          name="nextSteps"
-          rows={3}
-          maxLength={5000}
-          defaultValue={entry?.nextSteps ?? ""}
-          className="hs-input"
-        />
-      </label>
+      {kind === "meeting" ? (
+        <>
+          <label className="hs-label">
+            Meeting summary
+            <textarea
+              name="summary"
+              rows={3}
+              maxLength={5000}
+              defaultValue={entry?.summary ?? ""}
+              className="hs-input"
+            />
+          </label>
+          <details
+            className="rounded-lg border border-line p-3"
+            open={Object.keys(teamNotes).length > 0}
+          >
+            <summary className="cursor-pointer text-sm font-semibold">
+              Next steps by team
+            </summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {departments.map((department) => (
+                <label key={department.id} className="hs-label">
+                  {department.name}
+                  <textarea
+                    name={`team-${department.id}`}
+                    rows={2}
+                    maxLength={2000}
+                    defaultValue={teamNotes[department.id] ?? ""}
+                    className="hs-input"
+                  />
+                </label>
+              ))}
+            </div>
+          </details>
+          <label className="hs-label">
+            Overall next steps
+            <textarea
+              name="nextSteps"
+              rows={3}
+              maxLength={5000}
+              defaultValue={entry?.nextSteps ?? ""}
+              className="hs-input"
+            />
+          </label>
+        </>
+      ) : null}
       <Feedback state={state} />
-      <SubmitButton className="hs-btn hs-btn-primary">Save event</SubmitButton>
+      <SubmitButton className="hs-btn hs-btn-primary">
+        {kind === "meeting" ? "Save meeting" : "Save event"}
+      </SubmitButton>
     </form>
   );
 }
@@ -208,6 +289,7 @@ export function DriveForm({
     kind: string;
     departmentId: string | null;
     sharedUserIds: string[];
+    sharedDepartmentIds: string[];
   };
   people: Choice[];
   departments: Choice[];
@@ -300,55 +382,16 @@ export function DriveForm({
           />
         )}
       </div>
-      <details className="hs-card p-5" open>
-        <summary className="font-semibold">
-          Sharing — readers cannot edit your document
+      <details className="hs-card p-5">
+        <summary className="cursor-pointer font-semibold">
+          Sharing · private until you choose recipients
         </summary>
-        <div className="mt-4 space-y-4">
-          <label className="hs-label">
-            Who can read
-            <select
-              name="scope"
-              defaultValue={item?.scope ?? "private"}
-              className="hs-input"
-            >
-              <option value="private">Only me</option>
-              <option value="people">Selected people</option>
-              <option value="department">Department</option>
-              <option value="all">Everyone in the portal</option>
-            </select>
-          </label>
-          <label className="hs-label">
-            Department
-            <select
-              name="departmentId"
-              defaultValue={item?.departmentId ?? ""}
-              className="hs-input"
-            >
-              <option value="">Select department</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <fieldset>
-            <legend className="hs-label">People</legend>
-            <div className="grid max-h-40 gap-2 overflow-auto sm:grid-cols-2">
-              {people.map((p) => (
-                <label key={p.id} className="text-sm">
-                  <input
-                    name="sharedUserIds"
-                    type="checkbox"
-                    value={p.id}
-                    defaultChecked={item?.sharedUserIds.includes(p.id)}
-                  />{" "}
-                  {p.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+        <div className="mt-4">
+          <SharingFields
+            item={item}
+            people={people}
+            departments={departments}
+          />
         </div>
       </details>
       <p className="text-sm text-muted">
