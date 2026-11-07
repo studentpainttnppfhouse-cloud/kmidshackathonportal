@@ -120,7 +120,9 @@ export default async function EventPage({
       ) : null}
       {edit ? (
         <details className="space-y-3">
-          <summary className="hs-btn hs-btn-secondary">Edit event</summary>
+          <summary className="hs-btn hs-btn-secondary">
+            {e.kind === "meeting" ? "Edit meeting" : "Edit event"}
+          </summary>
           <EntryForm
             entry={{
               ...e,
@@ -128,14 +130,22 @@ export default async function EventPage({
               time: input(e.startsAt).slice(11),
               end: e.endsAt ? input(e.endsAt) : "",
               attendeeIds: ids(e.attendeeIds),
+              teamNextSteps: e.teamNextSteps,
             }}
             level={TIER_ORDER[v.tier]}
             ownDepartment={v.departmentId}
             people={people
-              .filter((p) => canAssignPerson(v, p))
-              .map((p) => ({ id: p.id, name: p.nickname || p.name }))}
+              .filter((p) => e.kind === "meeting" || canAssignPerson(v, p))
+              .map((p) => ({
+                id: p.id,
+                name: p.nickname ? `${p.nickname} · ${p.name}` : p.name,
+                departmentId: p.departmentId,
+              }))}
             departments={departments.filter(
-              (d) => TIER_ORDER[v.tier] >= 3 || d.id === v.departmentId,
+              (d) =>
+                e.kind === "meeting" ||
+                TIER_ORDER[v.tier] >= 3 ||
+                d.id === v.departmentId,
             )}
           />
           <form

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { assertCan, requireViewer, can, type Viewer } from "@/lib/authorize";
-import { optionalUrlSchema, urlSchema } from "@/lib/url";
+import { urlSchema } from "@/lib/url";
 import { RULES, rateLimit, retryMessage } from "@/lib/rate-limit";
 import {
   CHUNK_BYTES,
@@ -19,14 +19,6 @@ import {
   safeMimeType,
 } from "@/lib/attachments";
 import type { FormState } from "@/lib/actions/auth";
-import type { DocStatus } from "@prisma/client";
-
-const DOC_STATUSES = [
-  "DRAFT",
-  "IN_REVIEW",
-  "APPROVED",
-  "PUBLISHED",
-] as const satisfies readonly DocStatus[];
 
 /** Tags arrive as a comma-separated string and live in a JSON column. */
 function parseTags(raw: string | undefined): string[] {
@@ -61,85 +53,7 @@ function writeLimit(viewer: Viewer): FormState | null {
   return limit.ok ? null : { error: retryMessage(limit.retryAfter) };
 }
 
-// ---------------------------------------------------------------------------
-// Documents
-//
-// Two kinds live in one table (decision D3-B, revising D3-A):
-//
-//   - "external": a link to Google Docs. The original design, kept because
-//     comments and version history there already work and nobody wants to
-//     re-learn them.
-//   - "portal": written in the portal, Markdown body stored in TiDB, exported
-//     to .docx / .pdf / .md on demand, and attachable to an assignment so a
-//     submission can be the document itself.
-// ---------------------------------------------------------------------------
-
-const documentSchema = z.object({
-  title: z.string().trim().min(2, "Give the document a title.").max(200),
-  description: z.string().trim().max(2000).optional().or(z.literal("")),
-  departmentId: z.string().min(1, "Pick a department."),
-  source: z.enum(["external", "portal"]),
-  externalUrl: optionalUrlSchema,
-  body: z
-    .string()
-    .max(400_000, "That document is too long to store.")
-    .optional()
-    .or(z.literal("")),
-  assignmentId: z.string().max(40).optional().or(z.literal("")),
-  status: z.enum(DOC_STATUSES),
-  tags: z.string().trim().max(300).optional().or(z.literal("")),
-});
-
-/**
- * Attaching a document to a task is a write to that task's meaning, so it needs
- * the same permission as updating the task — not merely the right to read it.
- */
-async function resolveAssignmentLink(
-  viewer: Viewer,
-  assignmentId: string | undefined,
-): Promise<{ ok: true; id: string | null } | { ok: false; error: string }> {
-  if (!assignmentId) return { ok: true, id: null };
-
-  const assignment = await db.assignment.findUnique({
-    where: { id: assignmentId },
-    select: {
-      deletedAt: true,
-      departmentId: true,
-      createdById: true,
-      assignees: { select: { userId: true } },
-    },
-  });
-  if (!assignment || assignment.deletedAt) {
-    return { ok: false, error: "That task no longer exists." };
-  }
-
-  const allowed = can(viewer, "update", {
-    kind: "assignment",
-    departmentId: assignment.departmentId,
-    createdById: assignment.createdById,
-    ownerIds: assignment.assignees.map((a) => a.userId),
-  });
-  if (!allowed) {
-    return { ok: false, error: "You cannot attach a document to that task." };
-  }
-
-  return { ok: true, id: assignmentId };
-}
-
-function readDocumentForm(formData: FormData) {
-  return documentSchema.safeParse({
-    title: formData.get("title") ?? "",
-    description: formData.get("description") ?? "",
-    departmentId: formData.get("departmentId") ?? "",
-    source: "portal",
-    externalUrl: formData.get("externalUrl") ?? "",
-    body: formData.get("body") ?? "",
-    assignmentId: formData.get("assignmentId") ?? "",
-    status: formData.get("status") ?? "DRAFT",
-    tags: formData.get("tags") ?? "",
-  });
-}
-
+// Legacy action entry points route callers to the local document workspace.
 export async function createDocument(
   _prev: FormState,
   _data: FormData,

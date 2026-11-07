@@ -125,7 +125,7 @@ export async function resolveParent(
         departmentId: event.departmentId,
         canRead: canReadEntry(viewer, event),
         canWrite: canEditEntry(viewer, event),
-        path: `/calendar/${parentId}`,
+        path: `/meetings/${parentId}`,
         label: "this meeting",
       };
     }

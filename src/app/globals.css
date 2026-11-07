@@ -2023,3 +2023,9 @@ body[data-cookie-notice="1"] {
   :root[data-theme="dark"] .hs-logo-light { display: inline-block; }
   :root[data-theme="dark"] .hs-logo-dark { display: none; }
 }
+
+.hs-document-thumbnail { font-size: 9px; line-height: 1.6; color: var(--hs-muted); overflow-wrap: anywhere; }
+.hs-document-thumbnail h1, .hs-document-thumbnail h2, .hs-document-thumbnail h3 { font-size: 11px; font-weight: 700; margin: .75rem 0 .25rem; color: var(--hs-ink); }
+.hs-document-thumbnail p { margin-bottom: .5rem; }
+.hs-document-thumbnail ul, .hs-document-thumbnail ol { padding-left: 1rem; }
+.hs-document-thumbnail a { pointer-events: none; }
