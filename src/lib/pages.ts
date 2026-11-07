@@ -338,6 +338,8 @@ export function isAccessLevel(value: string): value is PageAccessLevel {
  * hiding a page has to hide everything underneath it, not just its index.
  */
 export function pageForPath(pathname: string): PortalPage | null {
+  if (pathname === "/drive" || pathname.startsWith("/drive/")) return PAGE_BY_KEY.documents;
+  if (pathname === "/meetings" || pathname.startsWith("/meetings/")) return PAGE_BY_KEY.calendar;
   const path = pathname.split("?")[0].replace(/\/+$/, "") || "/";
 
   let best: PortalPage | null = null;

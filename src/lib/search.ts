@@ -1,4 +1,5 @@
 import "server-only";
+import { driveItems } from "./workspace-access";
 import { db } from "@/lib/db";
 import { can, type Viewer } from "@/lib/policy";
 import { excerpt } from "@/lib/markdown";
@@ -159,7 +160,7 @@ export async function searchPortal(viewer: Viewer, rawQuery: string): Promise<Se
     });
   }
 
-  for (const d of documents) {
+  for (const d of documents.filter(d=>d.source === "portal")) {
     if (!can(viewer, "read", { kind: "document", departmentId: d.departmentId, ownerId: d.ownerId })) {
       continue;
     }
@@ -247,6 +248,9 @@ export async function searchPortal(viewer: Viewer, rawQuery: string): Promise<Se
     });
   }
 
+  for (const d of (await driveItems(viewer, "all", query)).slice(0, PER_KIND)) {
+    hits.push({kind:"document",id:d.id,href:`/drive/${d.id}`,title:d.title,context:d.body?excerpt(d.body,160):"",meta:"Portal drive"});
+  }
   return hits;
 }
 

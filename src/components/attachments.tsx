@@ -1,4 +1,5 @@
 "use client";
+import { DrivePicker } from "./workspace-forms";
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -91,7 +92,7 @@ export function Attachments({
       />
 
       {canWrite ? (
-        <AttachmentUploader parentType={parentType} parentId={parentId} maxBytes={maxBytes} />
+        <><AttachmentUploader parentType={parentType} parentId={parentId} maxBytes={maxBytes} />{parentType === "assignment" ? <DrivePicker assignmentId={parentId}/> : null}</>
       ) : null}
     </div>
   );
@@ -245,7 +246,7 @@ export function AttachmentUploader({
 
         <p className="text-xs text-faint">
           Up to {MAX_FILES_PER_UPLOAD} files, {formatBytes(maxBytes)} each. They save straight into the
-          portal — every device that signs in sees them, and a redeploy does not touch them.
+          portal and are available to people who can read this item.
         </p>
 
         <Feedback state={state} />
@@ -256,7 +257,7 @@ export function AttachmentUploader({
         </SubmitButton>
       </form>
 
-      {oversize ? (
+      {oversize && parentType === "drive" ? <p role="alert" className="text-sm text-muted">This file exceeds {formatBytes(maxBytes)}. Compress or split it before uploading.</p> : oversize ? (
         <OversizePanel
           parentType={parentType}
           parentId={parentId}

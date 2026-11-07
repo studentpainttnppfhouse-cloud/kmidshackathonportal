@@ -149,6 +149,7 @@ export async function linkAttachment(_prev: FormState, formData: FormData): Prom
     String(formData.get("parentType") ?? ""),
     String(formData.get("parentId") ?? ""),
   );
+  if (parent.parentType === "drive") return {error:"Portal drive stores uploaded files, not external links."};
   if (!parent.canWrite) return { error: "You cannot attach files here." };
 
   const name = safeFileName(String(formData.get("name") ?? "").trim());

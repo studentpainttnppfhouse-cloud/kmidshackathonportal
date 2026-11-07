@@ -1068,3 +1068,57 @@ model CalendarEvent {
   @@index([startsAt])
   @@map("calendar_events")
 }
+
+model CalendarEntry {
+  id String @id @default(cuid())
+  title String @db.VarChar(200)
+  body String? @db.Text
+  allDay Boolean @default(false)
+  summary String? @db.Text
+  nextSteps String? @db.Text
+  teamNextSteps Json?
+  slidesUrl String? @db.Text
+  startsAt DateTime
+  endsAt DateTime?
+  kind String @default("event") @db.VarChar(20)
+  scope String @default("private") @db.VarChar(20)
+  ownerId String
+  departmentId String?
+  attendeeIds Json?
+  location String? @db.VarChar(200)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([startsAt])
+  @@index([ownerId])
+  @@index([departmentId])
+  @@map("calendar_entries")
+}
+
+model DriveItem {
+  id String @id @default(cuid())
+  title String @db.VarChar(200)
+  body String? @db.LongText
+  kind String @default("document") @db.VarChar(20)
+  ownerId String
+  scope String @default("private") @db.VarChar(20)
+  departmentId String?
+  sharedUserIds Json?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([ownerId])
+  @@index([departmentId])
+  @@map("drive_items")
+}
+
+model DriveSubmission {
+  id String @id @default(cuid())
+  itemId String
+  assignmentId String
+  submittedById String
+  createdAt DateTime @default(now())
+  @@unique([itemId, assignmentId])
+  @@index([assignmentId])
+  @@map("drive_submissions")
+}

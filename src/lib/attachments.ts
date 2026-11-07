@@ -71,6 +71,7 @@ export const MAX_UPLOAD_LABEL = formatBytes(MAX_UPLOAD_BYTES);
  * a default here would be a way to store a file nobody is responsible for.
  */
 export const PARENT_TYPES = [
+  "drive",
   "assignment",
   "document",
   "announcement",

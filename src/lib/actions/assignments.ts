@@ -1,5 +1,6 @@
 "use server";
 
+import { canAssignPerson } from "@/lib/workspace-policy";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -70,6 +71,11 @@ async function validAssigneeIds(ids: string[]): Promise<string[] | null> {
   return found.length === unique.length ? unique : null;
 }
 
+async function validateNewAssignees(viewer: Viewer, ids: string[]) {
+  const people = await db.user.findMany({where:{id:{in:ids}},select:{id:true,tier:true,departmentId:true}});
+  return people.every(p=>canAssignPerson(viewer,p));
+}
+
 async function departmentExists(departmentId: string): Promise<boolean> {
   const found = await db.department.findUnique({
     where: { id: departmentId },
@@ -135,6 +141,8 @@ export async function createAssignment(_prev: FormState, formData: FormData): Pr
     ownerIds: assigneeIds,
   });
 
+  if (!await validateNewAssignees(viewer, assigneeIds)) return {error:"Assign yourself or lower-tier people in your permitted team."};
+
   // Assigning work to somebody else is a Head/Admin action, not a Member one.
   if (assigneeIds.some((id) => id !== viewer.id)) {
     assertCan(viewer, "assign", {
@@ -192,6 +200,7 @@ export async function createAssignment(_prev: FormState, formData: FormData): Pr
   });
 
   revalidatePath("/assignments");
+  revalidatePath("/calendar");
   revalidatePath("/dashboard");
   redirect(`/assignments/${created.id}`);
 }
@@ -247,7 +256,10 @@ export async function updateAssignment(_prev: FormState, formData: FormData): Pr
   const current = resource.kind === "assignment" ? resource.ownerIds : [];
   const changed =
     assigneeIds.length !== current.length || assigneeIds.some((x) => !current.includes(x));
-  if (changed) assertCan(viewer, "assign", resource);
+  if (changed) {
+    assertCan(viewer, "assign", resource);
+    if (!await validateNewAssignees(viewer, assigneeIds.filter(id=>!current.includes(id)))) return {error:"Assign yourself or lower-tier people in your permitted team."};
+  }
 
   // Approving is a distinct permission from editing — a member moving their own
   // task must not be able to mark it approved.
@@ -285,6 +297,7 @@ export async function updateAssignment(_prev: FormState, formData: FormData): Pr
   await audit(viewer.id, "assignment.updated", { type: "assignment", id });
 
   revalidatePath("/assignments");
+  revalidatePath("/calendar");
   revalidatePath(`/assignments/${id}`);
   revalidatePath("/dashboard");
   return { ok: "Saved." };
@@ -323,6 +336,7 @@ export async function setAssignmentStatus(id: string, status: AssignmentStatus):
   });
 
   revalidatePath("/assignments");
+  revalidatePath("/calendar");
   revalidatePath(`/assignments/${id}`);
   revalidatePath("/dashboard");
 }
@@ -364,6 +378,7 @@ export async function deleteAssignment(id: string): Promise<void> {
   await audit(viewer.id, "assignment.deleted", { type: "assignment", id });
 
   revalidatePath("/assignments");
+  revalidatePath("/calendar");
   revalidatePath("/dashboard");
 }
 
@@ -385,6 +400,7 @@ export async function restoreAssignment(id: string): Promise<void> {
   await db.assignment.update({ where: { id }, data: { deletedAt: null } });
   await audit(viewer.id, "assignment.restored", { type: "assignment", id });
   revalidatePath("/assignments");
+  revalidatePath("/calendar");
 }
 
 // ---------------------------------------------------------------------------
