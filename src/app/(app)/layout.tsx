@@ -55,9 +55,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ? ([{ key: "assignments", href: "/assignments", label: "Assignments board", badge: undefined }] as const)
         : []),
       { key: "calendar", href: "/calendar", label: "Calendar", badge: undefined },
+      { key: "calendar", href: "/meetings", label: "Meetings", badge: undefined },
       { key: "departments", href: "/departments", label: "Teams & departments", badge: undefined },
       { key: "people", href: "/people", label: "People", badge: undefined },
-      { key: "documents", href: "/documents", label: "Documents", badge: undefined },
+      { key: "documents", href: "/drive", label: "Portal drive", badge: undefined },
       { key: "brand", href: "/brand", label: "Brand kit", badge: undefined },
       { key: "forms", href: "/forms", label: "Forms", badge: undefined },
     ] as const

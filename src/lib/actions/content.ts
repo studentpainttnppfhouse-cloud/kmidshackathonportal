@@ -21,7 +21,12 @@ import {
 import type { FormState } from "@/lib/actions/auth";
 import type { DocStatus } from "@prisma/client";
 
-const DOC_STATUSES = ["DRAFT", "IN_REVIEW", "APPROVED", "PUBLISHED"] as const satisfies readonly DocStatus[];
+const DOC_STATUSES = [
+  "DRAFT",
+  "IN_REVIEW",
+  "APPROVED",
+  "PUBLISHED",
+] as const satisfies readonly DocStatus[];
 
 /** Tags arrive as a comma-separated string and live in a JSON column. */
 function parseTags(raw: string | undefined): string[] {
@@ -75,7 +80,11 @@ const documentSchema = z.object({
   departmentId: z.string().min(1, "Pick a department."),
   source: z.enum(["external", "portal"]),
   externalUrl: optionalUrlSchema,
-  body: z.string().max(400_000, "That document is too long to store.").optional().or(z.literal("")),
+  body: z
+    .string()
+    .max(400_000, "That document is too long to store.")
+    .optional()
+    .or(z.literal("")),
   assignmentId: z.string().max(40).optional().or(z.literal("")),
   status: z.enum(DOC_STATUSES),
   tags: z.string().trim().max(300).optional().or(z.literal("")),
@@ -122,7 +131,7 @@ function readDocumentForm(formData: FormData) {
     title: formData.get("title") ?? "",
     description: formData.get("description") ?? "",
     departmentId: formData.get("departmentId") ?? "",
-    source: formData.get("source") ?? "external",
+    source: "portal",
     externalUrl: formData.get("externalUrl") ?? "",
     body: formData.get("body") ?? "",
     assignmentId: formData.get("assignmentId") ?? "",
@@ -131,177 +140,17 @@ function readDocumentForm(formData: FormData) {
   });
 }
 
-export async function createDocument(_prev: FormState, formData: FormData): Promise<FormState> {
-  const viewer = await requireViewer();
-  const throttled = writeLimit(viewer);
-  if (throttled) return throttled;
-
-  const parsed = readDocumentForm(formData);
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const d = parsed.data;
-
-  if (d.source === "external" && !d.externalUrl) {
-    return { error: "Paste the document link, or write the document in the portal instead." };
-  }
-  if (d.source === "portal" && !d.body?.trim()) {
-    return { error: "Write something before saving the document." };
-  }
-
-  if (!(await assertDepartmentExists(d.departmentId))) {
-    return { error: "That department no longer exists." };
-  }
-
-  assertCan(viewer, "create", {
-    kind: "document",
-    departmentId: d.departmentId,
-    ownerId: viewer.id,
-  });
-
-  // Only a head or admin may file something straight in as approved.
-  if (d.status === "APPROVED" || d.status === "PUBLISHED") {
-    assertCan(viewer, "approve", {
-      kind: "document",
-      departmentId: d.departmentId,
-      ownerId: viewer.id,
-    });
-  }
-
-  const link = await resolveAssignmentLink(viewer, d.assignmentId || undefined);
-  if (!link.ok) return { error: link.error };
-
-  const approved = d.status === "APPROVED" || d.status === "PUBLISHED";
-
-  const created = await db.document.create({
-    data: {
-      title: d.title,
-      description: d.description || null,
-      departmentId: d.departmentId,
-      ownerId: viewer.id,
-      source: d.source,
-      externalUrl: d.source === "external" ? (d.externalUrl as string) : null,
-      body: d.source === "portal" ? (d.body as string) : null,
-      assignmentId: link.id,
-      status: d.status,
-      tags: parseTags(d.tags),
-      approvedById: approved ? viewer.id : null,
-      approvedAt: approved ? new Date() : null,
-    },
-  });
-
-  await audit(viewer.id, "document.created", { type: "document", id: created.id, detail: d.title });
-  revalidatePath("/documents");
-  if (link.id) revalidatePath(`/assignments/${link.id}`);
-
-  redirect(`/documents/${created.id}`);
+export async function createDocument(
+  _prev: FormState,
+  _data: FormData,
+): Promise<FormState> {
+  redirect("/drive/new");
 }
-
-export async function updateDocument(_prev: FormState, formData: FormData): Promise<FormState> {
-  const viewer = await requireViewer();
-  const throttled = writeLimit(viewer);
-  if (throttled) return throttled;
-
-  const id = String(formData.get("id") ?? "");
-  const existing = await db.document.findUnique({
-    where: { id },
-    select: { departmentId: true, ownerId: true, deletedAt: true, status: true, source: true },
-  });
-  if (!existing || existing.deletedAt) return { error: "That document no longer exists." };
-
-  const parsed = readDocumentForm(formData);
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const d = parsed.data;
-
-  // Two checks, not one: the right to edit the document where it is now, and
-  // the right to create in the department it is being moved to. Without the
-  // second, "update" on your own document is a way to file work into any
-  // department in the portal.
-  assertCan(viewer, "update", {
-    kind: "document",
-    departmentId: existing.departmentId,
-    ownerId: existing.ownerId,
-  });
-  if (d.departmentId !== existing.departmentId) {
-    if (!(await assertDepartmentExists(d.departmentId))) {
-      return { error: "That department no longer exists." };
-    }
-    assertCan(viewer, "create", {
-      kind: "document",
-      departmentId: d.departmentId,
-      ownerId: viewer.id,
-    });
-  }
-
-  const approved = d.status === "APPROVED" || d.status === "PUBLISHED";
-  if (approved && existing.status !== d.status) {
-    assertCan(viewer, "approve", {
-      kind: "document",
-      departmentId: existing.departmentId,
-      ownerId: existing.ownerId,
-    });
-  }
-
-  if (d.source === "external" && !d.externalUrl) {
-    return { error: "Paste the document link, or switch it to a portal document." };
-  }
-  if (d.source === "portal" && !d.body?.trim()) {
-    return { error: "Write something before saving the document." };
-  }
-
-  const link = await resolveAssignmentLink(viewer, d.assignmentId || undefined);
-  if (!link.ok) return { error: link.error };
-
-  await db.document.update({
-    where: { id },
-    data: {
-      title: d.title,
-      description: d.description || null,
-      departmentId: d.departmentId,
-      source: d.source,
-      externalUrl: d.source === "external" ? (d.externalUrl as string) : null,
-      body: d.source === "portal" ? (d.body as string) : null,
-      assignmentId: link.id,
-      status: d.status,
-      tags: parseTags(d.tags),
-      approvedById: approved ? viewer.id : null,
-      approvedAt: approved ? new Date() : null,
-    },
-  });
-
-  await audit(viewer.id, "document.updated", { type: "document", id });
-  revalidatePath("/documents");
-  revalidatePath(`/documents/${id}`);
-  if (link.id) revalidatePath(`/assignments/${link.id}`);
-  return { ok: "Saved." };
-}
-
-export async function setDocumentStatus(id: string, status: DocStatus): Promise<void> {
-  const viewer = await requireViewer();
-  if (!DOC_STATUSES.includes(status)) return;
-
-  const doc = await db.document.findUnique({
-    where: { id },
-    select: { departmentId: true, ownerId: true },
-  });
-  if (!doc) return;
-
-  const resource = { kind: "document" as const, ...doc };
-  assertCan(viewer, "update", resource);
-  if (status === "APPROVED" || status === "PUBLISHED") {
-    assertCan(viewer, "approve", resource);
-  }
-
-  await db.document.update({
-    where: { id },
-    data: {
-      status,
-      approvedById: status === "APPROVED" || status === "PUBLISHED" ? viewer.id : null,
-      approvedAt: status === "APPROVED" || status === "PUBLISHED" ? new Date() : null,
-    },
-  });
-
-  await audit(viewer.id, `document.status.${status.toLowerCase()}`, { type: "document", id });
-  revalidatePath("/documents");
-  revalidatePath(`/documents/${id}`);
+export async function updateDocument(
+  _prev: FormState,
+  data: FormData,
+): Promise<FormState> {
+  redirect(`/drive/${encodeURIComponent(String(data.get("id") ?? ""))}?edit=1`);
 }
 
 export async function deleteDocument(id: string): Promise<void> {
@@ -340,7 +189,16 @@ export async function deleteDocument(id: string): Promise<void> {
 // served back.
 // ---------------------------------------------------------------------------
 
-const FILE_KINDS = ["link", "image", "pdf", "video", "design", "font", "logo", "doc"] as const;
+const FILE_KINDS = [
+  "link",
+  "image",
+  "pdf",
+  "video",
+  "design",
+  "font",
+  "logo",
+  "doc",
+] as const;
 
 const fileSchema = z.object({
   name: z.string().trim().min(2, "Name the asset.").max(200),
@@ -355,7 +213,10 @@ const fileSchema = z.object({
 /** The same fields, minus the link, for an asset that carries its own bytes. */
 const uploadedFileSchema = fileSchema.omit({ externalUrl: true, kind: true });
 
-export async function createFile(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function createFile(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const viewer = await requireViewer();
   const throttled = writeLimit(viewer);
   if (throttled) return throttled;
@@ -376,7 +237,11 @@ export async function createFile(_prev: FormState, formData: FormData): Promise<
     return { error: "That department no longer exists." };
   }
 
-  assertCan(viewer, "create", { kind: "file", departmentId: d.departmentId, ownerId: viewer.id });
+  assertCan(viewer, "create", {
+    kind: "file",
+    departmentId: d.departmentId,
+    ownerId: viewer.id,
+  });
 
   const created = await db.fileAsset.create({
     data: {
@@ -391,7 +256,11 @@ export async function createFile(_prev: FormState, formData: FormData): Promise<
     },
   });
 
-  await audit(viewer.id, "file.created", { type: "file", id: created.id, detail: d.name });
+  await audit(viewer.id, "file.created", {
+    type: "file",
+    id: created.id,
+    detail: d.name,
+  });
   revalidatePath("/files");
   revalidatePath("/brand");
   redirect("/files");
@@ -409,7 +278,10 @@ export async function createFile(_prev: FormState, formData: FormData): Promise<
  * consolation prize — for a 400 MB export video it is the correct answer, and
  * the portal keeps the name, the team and the tags either way.
  */
-export async function uploadFileAsset(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function uploadFileAsset(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const viewer = await requireViewer();
   const throttled = writeLimit(viewer);
   if (throttled) return throttled;
@@ -438,7 +310,11 @@ export async function uploadFileAsset(_prev: FormState, formData: FormData): Pro
     return { error: "That department no longer exists." };
   }
 
-  assertCan(viewer, "create", { kind: "file", departmentId: d.departmentId, ownerId: viewer.id });
+  assertCan(viewer, "create", {
+    kind: "file",
+    departmentId: d.departmentId,
+    ownerId: viewer.id,
+  });
 
   const fileName = safeFileName(upload.name);
   const mimeType = safeMimeType(upload.type, fileName);
@@ -477,12 +353,19 @@ export async function uploadFileAsset(_prev: FormState, formData: FormData): Pro
     },
   });
 
-  for (let offset = 0, idx = 0; offset < bytes.byteLength; offset += CHUNK_BYTES, idx += 1) {
+  for (
+    let offset = 0, idx = 0;
+    offset < bytes.byteLength;
+    offset += CHUNK_BYTES, idx += 1
+  ) {
     await db.attachmentChunk.create({
       data: {
         attachmentId: attachment.id,
         idx,
-        bytes: bytes.subarray(offset, Math.min(offset + CHUNK_BYTES, bytes.byteLength)),
+        bytes: bytes.subarray(
+          offset,
+          Math.min(offset + CHUNK_BYTES, bytes.byteLength),
+        ),
       },
     });
   }
@@ -524,8 +407,13 @@ export async function deleteFile(id: string): Promise<void> {
   });
   if (uploads.length > 0) {
     const ids = uploads.map((upload) => upload.id);
-    await db.attachment.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date() } });
-    await db.attachmentChunk.deleteMany({ where: { attachmentId: { in: ids } } });
+    await db.attachment.updateMany({
+      where: { id: { in: ids } },
+      data: { deletedAt: new Date() },
+    });
+    await db.attachmentChunk.deleteMany({
+      where: { attachmentId: { in: ids } },
+    });
   }
 
   await audit(viewer.id, "file.deleted", { type: "file", id });
@@ -546,7 +434,10 @@ const announcementSchema = z.object({
   toTeams: z.coerce.boolean().optional(),
 });
 
-export async function createAnnouncement(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function createAnnouncement(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const viewer = await requireViewer();
   const throttled = writeLimit(viewer);
   if (throttled) return throttled;
@@ -572,7 +463,11 @@ export async function createAnnouncement(_prev: FormState, formData: FormData): 
 
   // All-staff announcements are an Admin action; a head announces to their own
   // department only. `can()` encodes both — this call is the whole check.
-  assertCan(viewer, "create", { kind: "announcement", departmentId, authorId: viewer.id });
+  assertCan(viewer, "create", {
+    kind: "announcement",
+    departmentId,
+    authorId: viewer.id,
+  });
 
   const created = await db.announcement.create({
     data: {
@@ -585,8 +480,10 @@ export async function createAnnouncement(_prev: FormState, formData: FormData): 
     },
   });
 
-  await audit(viewer.id, "announcement.created", { type: "announcement", id: created.id });
-
+  await audit(viewer.id, "announcement.created", {
+    type: "announcement",
+    id: created.id,
+  });
 
   revalidatePath("/announcements");
   revalidatePath("/dashboard");
@@ -607,19 +504,25 @@ export async function updateAnnouncement(
     where: { id },
     select: { departmentId: true, authorId: true, deletedAt: true },
   });
-  if (!existing || existing.deletedAt) return { error: "That announcement no longer exists." };
+  if (!existing || existing.deletedAt)
+    return { error: "That announcement no longer exists." };
   if (!can(viewer, "update", { kind: "announcement", ...existing })) {
     await audit(viewer.id, "announcement.update_denied", {
       type: "announcement",
       id,
-      detail: "Tried to edit an announcement they may not edit. Reason: only the author, the department head or an admin can edit it.",
+      detail:
+        "Tried to edit an announcement they may not edit. Reason: only the author, the department head or an admin can edit it.",
     });
     return { error: "You can't edit this announcement." };
   }
 
   const parsed = z
     .object({
-      title: z.string().trim().min(2, "Give the announcement a title.").max(200),
+      title: z
+        .string()
+        .trim()
+        .min(2, "Give the announcement a title.")
+        .max(200),
       body: z.string().trim().min(2, "Write the announcement.").max(5000),
       pinned: z.boolean(),
     })
@@ -681,7 +584,10 @@ export async function deleteAnnouncement(id: string): Promise<void> {
   if (!n) return;
 
   assertCan(viewer, "delete", { kind: "announcement", ...n });
-  await db.announcement.update({ where: { id }, data: { deletedAt: new Date() } });
+  await db.announcement.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
   await audit(viewer.id, "announcement.deleted", { type: "announcement", id });
   revalidatePath("/announcements");
 }

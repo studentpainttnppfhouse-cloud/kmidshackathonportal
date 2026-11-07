@@ -1,3 +1,4 @@
+import { readDrive } from "@/lib/workspace-access";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
@@ -85,6 +86,10 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
   const sourceLink = safeHref(approvedSource?.linkUrl);
   const mayCaption = a.department.slug === "social" && canEditMediaCaptions(viewer, a.departmentId);
 
+  const submissions = await db.driveSubmission.findMany({where:{assignmentId:a.id}});
+  const submittedItems = await db.driveItem.findMany({where:{id:{in:submissions.map(s=>s.itemId)},deletedAt:null}});
+  const visibleSubmissions = [];
+  for (const item of submittedItems) if(await readDrive(viewer,item)) visibleSubmissions.push(item);
   const overdue = isOverdue(a.dueDate, a.status);
 
   return (
@@ -227,6 +232,7 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
         </Card>
       ) : null}
 
+      {visibleSubmissions.length ? <Card><SectionTitle>Portal drive submissions</SectionTitle><ul className="space-y-2">{visibleSubmissions.map(d=><li key={d.id}><Link className="text-brand-deep underline" href={`/drive/${d.id}`}>{d.title}</Link></li>)}</ul></Card> : null}
       <Card>
         <SectionTitle>Comments</SectionTitle>
         {comments.length === 0 ? (

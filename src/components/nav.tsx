@@ -11,8 +11,8 @@ import type { Tier } from "@prisma/client";
 export type NavItem = { href: string; label: string; badge?: number };
 
 const groups = [
-  { label: "Workspace", paths: ["/dashboard", "/announcements", "/my-tasks", "/assignments", "/calendar", "/departments", "/people", "/assistant"] },
-  { label: "Shared resources", paths: ["/documents", "/brand", "/forms"] },
+  { label: "Workspace", paths: ["/dashboard", "/announcements", "/my-tasks", "/assignments", "/calendar", "/meetings", "/departments", "/people", "/assistant"] },
+  { label: "Shared resources", paths: ["/drive", "/brand", "/forms"] },
   { label: "Manage", paths: ["/admin", "/admin/audit"] },
 ];
 const dailyPaths = ["/dashboard", "/my-tasks", "/calendar", "/departments"];
@@ -30,7 +30,8 @@ const ICON: Record<string, string> = {
   "/departments": "M4 20v-2a4 4 0 0 1 4-4h2M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM14 20v-2a4 4 0 0 1 4-4M17 10a3 3 0 1 0 0-6",
   "/people": "M5 20v-1a6 6 0 0 1 14 0v1M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   "/assistant": "M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z",
-  "/documents": "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
+  "/meetings": "M4 5h16v14H4zM8 9h8M8 13h5",
+  "/drive": "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
   "/brand": "M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.5 0-1.2-1-1.5-1-2.5s.8-1.5 2-1.5H17a4 4 0 0 0 4-4c0-4.5-4-8.5-9-8.5zM7.5 11.5h.01M10 7.5h.01M15 7.5h.01",
   "/forms": "M6 3h12v18H6zM9 8h6M9 12h6M9 16h3",
   "/admin": "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",

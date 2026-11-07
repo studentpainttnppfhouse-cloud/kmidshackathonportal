@@ -1,8 +1,13 @@
 import "server-only";
+import { readDrive, canEditDrive } from "./workspace-access";
 import { db } from "@/lib/db";
 import { can, canSeePage, type Viewer } from "@/lib/policy";
-import { canRenderInline, isParentType, type ParentType } from "@/lib/attachments";
-import { canEditCalendarEvent } from "@/lib/calendar-access";
+import {
+  canRenderInline,
+  isParentType,
+  type ParentType,
+} from "@/lib/attachments";
+import { canReadEntry, canEditEntry } from "@/lib/workspace-policy";
 import { safeHref } from "@/lib/url";
 
 /**
@@ -65,6 +70,19 @@ export async function resolveParent(
   if (!parentId || parentId.length > 40) return DENIED(parentType, parentId);
 
   switch (parentType) {
+    case "drive": {
+      const row = await db.driveItem.findUnique({ where: { id: parentId } });
+      if (!row || row.deletedAt) return DENIED(parentType, parentId);
+      return {
+        parentType,
+        parentId,
+        departmentId: row.departmentId,
+        canRead: await readDrive(viewer, row),
+        canWrite: canEditDrive(viewer, row),
+        path: `/drive/${parentId}`,
+        label: "this drive item",
+      };
+    }
     case "assignment": {
       const row = await db.assignment.findUnique({
         where: { id: parentId },
@@ -96,18 +114,18 @@ export async function resolveParent(
     }
 
     case "meeting": {
-      const event = await db.calendarEvent.findUnique({
+      const event = await db.calendarEntry.findUnique({
         where: { id: parentId },
-        select: { isMeeting: true, departmentId: true, createdById: true },
       });
-      if (!event?.isMeeting) return DENIED(parentType, parentId);
+      if (!event || event.kind !== "meeting")
+        return DENIED(parentType, parentId);
       return {
         parentType,
         parentId,
         departmentId: event.departmentId,
-        canRead: canSeePage(viewer, "calendar"),
-        canWrite: canEditCalendarEvent(viewer, event.createdById),
-        path: "/calendar",
+        canRead: canReadEntry(viewer, event),
+        canWrite: canEditEntry(viewer, event),
+        path: `/calendar/${parentId}`,
         label: "this meeting",
       };
     }
@@ -189,7 +207,14 @@ export async function resolveParent(
         where: { id: parentId },
         select: {
           userId: true,
-          form: { select: { id: true, ownerId: true, departmentId: true, isOpen: true } },
+          form: {
+            select: {
+              id: true,
+              ownerId: true,
+              departmentId: true,
+              isOpen: true,
+            },
+          },
         },
       });
       if (!row) return DENIED(parentType, parentId);
@@ -248,7 +273,8 @@ export async function resolveParent(
         canRead: can(viewer, "read", { kind: "user", userId: parentId }),
         // Yourself, or an admin adding reference files to someone's profile.
         canWrite:
-          parentId === viewer.id || can(viewer, "update", { kind: "user", userId: parentId }),
+          parentId === viewer.id ||
+          can(viewer, "update", { kind: "user", userId: parentId }),
         path: `/people/${parentId}`,
         label: "this profile",
       };
@@ -294,7 +320,11 @@ export async function attachmentsByParent(
   if (!isParentType(parentType) || parentIds.length === 0) return grouped;
 
   const rows = await db.attachment.findMany({
-    where: { parentType, parentId: { in: parentIds.slice(0, 200) }, deletedAt: null },
+    where: {
+      parentType,
+      parentId: { in: parentIds.slice(0, 200) },
+      deletedAt: null,
+    },
     select: {
       id: true,
       parentId: true,
@@ -334,7 +364,11 @@ export async function attachmentCounts(
 
   const rows = await db.attachment.groupBy({
     by: ["parentId"],
-    where: { parentType, parentId: { in: parentIds.slice(0, 300) }, deletedAt: null },
+    where: {
+      parentType,
+      parentId: { in: parentIds.slice(0, 300) },
+      deletedAt: null,
+    },
     _count: { _all: true },
   });
 
@@ -370,7 +404,8 @@ export async function assetLinks(
   const uploaded = new Map<string, (typeof rows)[number]>();
   // First attachment wins: an asset carries one file, and a second would be a
   // row written by a code path that does not exist.
-  for (const row of rows) if (!uploaded.has(row.parentId)) uploaded.set(row.parentId, row);
+  for (const row of rows)
+    if (!uploaded.has(row.parentId)) uploaded.set(row.parentId, row);
 
   for (const asset of assets) {
     const file = uploaded.get(asset.id);
