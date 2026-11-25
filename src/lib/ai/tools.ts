@@ -64,7 +64,7 @@ export const TOOLS: ToolDef[] = [
       type: "OBJECT",
       properties: {
         title: { type: "STRING" },
-        description: { type: "STRING" },
+        description: { type: "STRING", description: "Markdown: **bold**, *italic*, ++underline++, ~~strike~~, ^sup^, ~sub~, # heading, - list" },
         departmentId: { type: "STRING" },
         dueDate: { type: "STRING" },
         priority: { type: "STRING", enum: PRIORITIES },
