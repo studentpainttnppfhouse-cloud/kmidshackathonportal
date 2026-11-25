@@ -2,7 +2,7 @@ import "server-only";
 import { driveItems } from "./workspace-access";
 import { db } from "@/lib/db";
 import { can, type Viewer } from "@/lib/policy";
-import { excerpt } from "@/lib/markdown";
+import { excerpt, plainText } from "@/lib/markdown";
 
 /**
  * One search box across the whole portal.
@@ -155,7 +155,7 @@ export async function searchPortal(viewer: Viewer, rawQuery: string): Promise<Se
       id: a.id,
       href: `/assignments/${a.id}`,
       title: a.title,
-      context: a.description?.slice(0, 160) ?? "",
+      context: a.description ? plainText(a.description, 160) : "",
       meta: `${a.department.name} · ${a.status.replace(/_/g, " ").toLowerCase()}`,
     });
   }

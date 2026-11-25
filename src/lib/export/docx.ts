@@ -1,5 +1,5 @@
 import { createZip } from "@/lib/export/zip";
-import { escapeHtml, parseBlocks, type Block } from "@/lib/markdown";
+import { escapeHtml, parseBlocks, stripInline, type Block } from "@/lib/markdown";
 
 /**
  * A .docx writer for portal documents.
@@ -124,7 +124,7 @@ function runs(text: string): string {
           `<w:r><w:rPr><w:color w:val="94A3B8"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve"> (${xml(link[2])})</w:t></w:r>`
         );
       }
-      return `<w:r><w:t xml:space="preserve">${xml(part)}</w:t></w:r>`;
+      return `<w:r><w:t xml:space="preserve">${xml(stripInline(part))}</w:t></w:r>`;
     })
     .join("");
 }
@@ -150,7 +150,14 @@ function blockToXml(block: Block): string {
     case "list":
       return block.items
         .map((item, index) =>
-          paragraph(null, block.ordered ? `${index + 1}.  ${item}` : `•  ${item}`),
+          paragraph(
+            null,
+            block.ordered
+              ? `${index + 1}.  ${item}`
+              : /^\[[ xX]\]\s/.test(item)
+                ? `${item[1] === " " ? "☐" : "☑"}  ${item.slice(4)}`
+                : `•  ${item}`,
+          ),
         )
         .join("");
     case "rule":

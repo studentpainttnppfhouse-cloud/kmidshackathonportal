@@ -562,7 +562,8 @@ body[data-cookie-notice="1"] {
        beside a full panel. */
     align-items: stretch;
   }
-  .hs-composer-notes {
+  .hs-composer-notes,
+  .hs-composer-main > .hs-rte {
     flex: 1 1 auto;
   }
   .hs-composer-feedback,
@@ -1318,6 +1319,196 @@ body[data-cookie-notice="1"] {
   margin: 1.6em 0;
   border: 0;
   border-top: 1px solid var(--hs-line);
+}
+.hs-prose u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hs-prose s {
+  text-decoration: line-through;
+  color: var(--hs-muted);
+}
+.hs-prose mark {
+  background: var(--hs-warn-soft);
+  color: var(--hs-ink);
+  border-radius: 3px;
+  padding: 0 0.15em;
+}
+.hs-prose sup,
+.hs-prose sub {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+}
+.hs-prose sup {
+  vertical-align: baseline;
+  top: -0.5em;
+}
+.hs-prose sub {
+  vertical-align: baseline;
+  bottom: -0.25em;
+}
+.hs-prose ul.hs-checklist {
+  list-style: none;
+  padding-left: 0.1em;
+}
+.hs-prose li.hs-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.hs-prose .hs-check-box {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.05em;
+  height: 1.05em;
+  margin-top: 0.32em;
+  border: 1.5px solid var(--hs-edge);
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1;
+}
+.hs-prose li.hs-check.is-done .hs-check-box {
+  background: var(--hs-brand-solid);
+  border-color: var(--hs-brand-solid);
+  color: var(--hs-on-brand);
+}
+.hs-prose li.hs-check.is-done > span:last-child {
+  color: var(--hs-muted);
+  text-decoration: line-through;
+}
+
+/* A task brief: the same renderer, set a size down so it reads as part of the
+   task card rather than as a document of its own. */
+.hs-prose-compact {
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+.hs-prose-compact h1 {
+  font-size: 1.25rem;
+}
+.hs-prose-compact h2 {
+  font-size: 1.08rem;
+}
+.hs-prose-compact h3 {
+  font-size: 0.95rem;
+}
+.hs-prose-compact h1,
+.hs-prose-compact h2,
+.hs-prose-compact h3 {
+  margin: 1.2em 0 0.4em;
+}
+.hs-prose-compact p,
+.hs-prose-compact ul,
+.hs-prose-compact ol,
+.hs-prose-compact blockquote {
+  margin-bottom: 0.75em;
+}
+.hs-prose-compact > :last-child {
+  margin-bottom: 0;
+}
+
+/* --- Rich text box --------------------------------------------------------
+   A Markdown textarea with a formatting bar on top and a preview tab. The
+   textarea stays a real form field, so the post, the draft keeper and
+   Ctrl+Enter all work as they did. */
+.hs-rte {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hs-input-border);
+  border-radius: var(--radius-control);
+  background: var(--hs-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-width: 0;
+}
+.hs-rte:focus-within {
+  border-color: var(--hs-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hs-brand) 30%, transparent);
+}
+.hs-rte-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--hs-line);
+}
+.hs-rte-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.2rem 0.25rem;
+  background: var(--hs-line);
+}
+.hs-rte-btn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.4rem;
+  border-radius: 8px;
+  color: var(--hs-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.hs-rte-btn:hover {
+  background: var(--hs-hover);
+  color: var(--hs-ink);
+}
+.hs-rte-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.hs-rte-select {
+  height: 2rem;
+  border-radius: 8px;
+  border: 1px solid var(--hs-line);
+  background: var(--hs-surface);
+  color: var(--hs-ink);
+  font-size: 0.8125rem;
+  padding: 0 0.4rem;
+  cursor: pointer;
+}
+.hs-rte-tabs {
+  margin-left: auto;
+  display: flex;
+  gap: 0.15rem;
+}
+.hs-rte-tab {
+  height: 2rem;
+  padding: 0 0.6rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--hs-muted);
+  cursor: pointer;
+}
+.hs-rte-tab[aria-selected="true"] {
+  background: var(--hs-tint);
+  color: var(--hs-brand-deep);
+}
+.hs-rte .hs-composer-notes,
+.hs-rte .hs-composer-notes:focus {
+  border: 0;
+  box-shadow: none;
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
+}
+.hs-rte-preview {
+  min-height: 9rem;
+  padding: 0.75rem;
+}
+.hs-rte-hint {
+  padding: 0.3rem 0.75rem 0.45rem;
+  border-top: 1px solid var(--hs-line);
+  font-size: 0.6875rem;
+  color: var(--hs-faint);
+}
+.hs-rte-hint code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  color: var(--hs-muted);
 }
 .hs-prose table {
   width: 100%;

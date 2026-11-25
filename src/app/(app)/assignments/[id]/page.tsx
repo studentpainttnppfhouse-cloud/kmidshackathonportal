@@ -15,6 +15,7 @@ import { listAttachments } from "@/lib/attachment-access";
 import { CaptionField } from "@/components/media-captions";
 import { canEditMediaCaptions } from "@/lib/media-handoff";
 import { safeHref } from "@/lib/url";
+import { renderMarkdown } from "@/lib/markdown";
 import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
 
 export const metadata: Metadata = { title: "Task" };
@@ -118,9 +119,12 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
         </div>
 
         {a.description ? (
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-muted">
-            {a.description}
-          </p>
+          <div
+            className="hs-prose hs-prose-compact mt-4"
+            // renderMarkdown escapes every character before it adds a tag, so
+            // the brief can carry formatting without carrying markup.
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(a.description, { breaks: true }) }}
+          />
         ) : null}
 
         <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-3">

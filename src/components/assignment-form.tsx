@@ -10,6 +10,7 @@ import { PRIORITY_LABEL, STATUS_LABEL, STATUS_ORDER } from "@/lib/constants";
 import { toDateInput } from "@/lib/dates";
 import type { AssignmentStatus, Priority } from "@prisma/client";
 import { PeoplePicker, type PickerTeam } from "@/components/people-picker";
+import { RichTextArea } from "@/components/rich-text-area";
 
 const initial: FormState = {};
 
@@ -146,13 +147,14 @@ export function AssignmentForm({
         <label className="sr-only" htmlFor="description">
           Details
         </label>
-        <textarea
+        <RichTextArea
           id="description"
           name="description"
+          label="Details"
           rows={8}
+          maxLength={5000}
           defaultValue={assignment?.description ?? ""}
           placeholder="What done looks like, and anything the person taking it needs to know."
-          className="hs-composer-notes"
         />
 
         <details className="hs-disclosure" open={Boolean(assignment?.linkUrl || assignment?.recurrence)}>

@@ -17,8 +17,10 @@
  * The alternative was `marked` + `DOMPurify`: two dependencies, a sanitiser
  * that has to be configured correctly, and a much larger surface than the six
  * constructs a staff document actually uses. This supports headings, bold,
- * italic, inline code, links, bullet and numbered lists, block quotes, fenced
- * code, horizontal rules and paragraphs — and nothing else, deliberately.
+ * italic, underline (`++u++`), strikethrough (`~~s~~`), highlight (`==h==`),
+ * superscript (`^sup^`), subscript (`~sub~`), inline code, links, bullet,
+ * numbered and check lists, block quotes, fenced code, horizontal rules and
+ * paragraphs — and nothing else, deliberately.
  */
 
 export type Block =
@@ -38,12 +40,22 @@ export function escapeHtml(raw: string): string {
     .replace(/'/g, "&#39;");
 }
 
+export type MarkdownOptions = {
+  /**
+   * Keep single line breaks inside a paragraph instead of folding them into
+   * spaces. Task briefs are written line by line ("Headline: …", "Date: …"),
+   * and folding those into one run-on paragraph loses the brief's shape.
+   */
+  breaks?: boolean;
+};
+
 /**
  * Splits a document body into blocks. Shared by the HTML renderer, the DOCX
  * writer and the PDF writer, so all three agree on what the document *is*
  * before they disagree about how to draw it.
  */
-export function parseBlocks(source: string): Block[] {
+export function parseBlocks(source: string, options: MarkdownOptions = {}): Block[] {
+  const joiner = options.breaks ? "\n" : " ";
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const blocks: Block[] = [];
 
@@ -55,7 +67,7 @@ export function parseBlocks(source: string): Block[] {
 
   const flushParagraph = () => {
     if (paragraph.length > 0) {
-      blocks.push({ type: "paragraph", text: paragraph.join(" ").trim() });
+      blocks.push({ type: "paragraph", text: paragraph.join(joiner).trim() });
       paragraph = [];
     }
   };
@@ -67,7 +79,7 @@ export function parseBlocks(source: string): Block[] {
   };
   const flushQuote = () => {
     if (quote.length > 0) {
-      blocks.push({ type: "quote", text: quote.join(" ").trim() });
+      blocks.push({ type: "quote", text: quote.join(joiner).trim() });
       quote = [];
     }
   };
@@ -116,7 +128,8 @@ export function parseBlocks(source: string): Block[] {
       continue;
     }
 
-    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
+    // "•" too: briefs pasted from slides and chat apps use the real bullet.
+    const bullet = /^\s*[-*+•]\s+(.*)$/.exec(line);
     if (bullet) {
       flushParagraph();
       flushQuote();
@@ -161,7 +174,13 @@ export function stripInline(text: string): string {
     .replace(/!?\[([^\]]*)\]\(([^)\s]+)\)/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1$2")
-    .replace(/`([^`]+)`/g, "$1");
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/~~(\S(?:[^~]*?\S)?)~~/g, "$1")
+    .replace(/\+\+(\S(?:[^+]*?\S)?)\+\+/g, "$1")
+    .replace(/==(\S(?:[^=]*?\S)?)==/g, "$1")
+    .replace(/\^(\S(?:[^^]*?\S)?)\^/g, "$1")
+    .replace(/(^|[^~])~(\S(?:[^~]*?\S)?)~(?!~)/g, "$1$2")
+    .replace(/^\[[ xX]\]\s+/, "");
 }
 
 const SAFE_LINK = /^https?:\/\/[^\s"'<>]+$/i;
@@ -173,26 +192,67 @@ const SAFE_LINK = /^https?:\/\/[^\s"'<>]+$/i;
  * `renderMarkdown`, so by the time this function sees the string, an author's
  * `<script>` is already the harmless five characters `&lt;script&gt;`. Every
  * `<` this function introduces is one of its own literals.
+ *
+ * Links and code spans are finished first and parked behind placeholders, so
+ * the span markers below never reach inside them: a `~` in a URL or a `^` in
+ * a quoted command stays exactly as typed.
+ *
+ * The newer span markers (underline, strike, highlight, super/subscript) only
+ * match when the text inside starts and ends with a non-space character. That
+ * keeps ordinary writing ordinary: "~5 to ~10 people" and "C++ and C++" are
+ * not formatting.
  */
 function renderInline(escaped: string): string {
+  const parked: string[] = [];
+  const park = (html: string) => `\u0000${parked.push(html) - 1}\u0000`;
+
+  // A NUL typed by the author could otherwise pose as a placeholder.
+  const out = escaped
+    .replace(/\u0000/g, "")
+    // Links: the label may be anything (it is escaped); the href must match
+    // the allowlist exactly or the whole thing stays as literal text.
+    .replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (whole, label: string, href: string) => {
+      const decoded = href.replace(/&amp;/g, "&");
+      if (!SAFE_LINK.test(decoded)) return whole;
+      return `\u0000L${parked.push(escapeHtml(decoded)) - 1}\u0000${label}\u0000/L\u0000`;
+    })
+    .replace(/`([^`]+)`/g, (_whole, code: string) => park(`<code>${code}</code>`))
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/~~(\S(?:[^~]*?\S)?)~~/g, "<s>$1</s>")
+    .replace(/\+\+(\S(?:[^+]*?\S)?)\+\+/g, "<u>$1</u>")
+    .replace(/==(\S(?:[^=]*?\S)?)==/g, "<mark>$1</mark>")
+    .replace(/\^(\S(?:[^^]*?\S)?)\^/g, "<sup>$1</sup>")
+    .replace(/(^|[^~])~(\S(?:[^~]*?\S)?)~(?!~)/g, "$1<sub>$2</sub>")
+    .replace(/\n/g, "<br />");
+
+  return out
+    .replace(
+      /\u0000L(\d+)\u0000/g,
+      (_whole, index: string) =>
+        `<a href="${parked[Number(index)]}" target="_blank" rel="noreferrer noopener nofollow">`,
+    )
+    .replace(/\u0000\/L\u0000/g, "</a>")
+    .replace(/\u0000(\d+)\u0000/g, (_whole, index: string) => parked[Number(index)] ?? "");
+}
+
+/** A check-list item, written `[ ] task` or `[x] task` inside a bullet list. */
+function renderListItem(item: string): string {
+  const check = /^\[([ xX])\]\s+(.*)$/.exec(item);
+  if (!check) return `<li>${renderInline(escapeHtml(item))}</li>`;
+
+  const done = check[1] !== " ";
   return (
-    escaped
-      // Links: the label may be anything (it is escaped); the href must match
-      // the allowlist exactly or the whole thing stays as literal text.
-      .replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (whole, label: string, href: string) => {
-        const decoded = href.replace(/&amp;/g, "&");
-        if (!SAFE_LINK.test(decoded)) return whole;
-        return `<a href="${escapeHtml(decoded)}" target="_blank" rel="noreferrer noopener nofollow">${label}</a>`;
-      })
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    `<li class="hs-check${done ? " is-done" : ""}">` +
+    `<span class="hs-check-box" aria-hidden="true">${done ? "✓" : ""}</span>` +
+    `<span class="sr-only">${done ? "Done: " : "To do: "}</span>` +
+    `<span>${renderInline(escapeHtml(check[2]))}</span></li>`
   );
 }
 
 /** Markdown to HTML. The output is safe to inject; the input never is. */
-export function renderMarkdown(source: string): string {
-  const blocks = parseBlocks(source);
+export function renderMarkdown(source: string, options: MarkdownOptions = {}): string {
+  const blocks = parseBlocks(source, options);
   const out: string[] = [];
 
   for (const block of blocks) {
@@ -205,10 +265,9 @@ export function renderMarkdown(source: string): string {
         break;
       case "list": {
         const tag = block.ordered ? "ol" : "ul";
-        const items = block.items
-          .map((item) => `<li>${renderInline(escapeHtml(item))}</li>`)
-          .join("");
-        out.push(`<${tag}>${items}</${tag}>`);
+        const checklist = !block.ordered && block.items.some((item) => /^\[[ xX]\]\s/.test(item));
+        const items = block.items.map(renderListItem).join("");
+        out.push(checklist ? `<ul class="hs-checklist">${items}</ul>` : `<${tag}>${items}</${tag}>`);
         break;
       }
       case "quote":
@@ -242,4 +301,19 @@ export function excerpt(source: string, max = 180): string {
 export function wordCount(source: string): number {
   const words = stripInline(source).trim().split(/\s+/).filter(Boolean);
   return words.length;
+}
+
+/**
+ * Every word of the body as one line of plain text, list items included. For
+ * search snippets and anywhere else that has room for a sentence, not markup.
+ */
+export function plainText(source: string, max = 160): string {
+  const text = parseBlocks(source)
+    .flatMap((b) => (b.type === "list" ? b.items : "text" in b ? [b.text] : []))
+    .map(stripInline)
+    .join(" · ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
