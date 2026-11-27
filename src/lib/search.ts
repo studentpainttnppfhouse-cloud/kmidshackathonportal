@@ -1,7 +1,7 @@
 import "server-only";
 import { driveItems } from "./workspace-access";
 import { db } from "@/lib/db";
-import { can, type Viewer } from "@/lib/policy";
+import { can, canCompetition, type Viewer } from "@/lib/policy";
 import { excerpt, plainText } from "@/lib/markdown";
 
 /**
@@ -222,10 +222,22 @@ export async function searchPortal(viewer: Viewer, rawQuery: string): Promise<Se
     });
   }
 
+  // Competition forms are listed only to the staff who run them.
+  const competitionForms = new Set(
+    forms.length
+      ? (
+          await db.competitionWorkflow.findMany({
+            where: { formId: { in: forms.map((f) => f.id) } },
+            select: { formId: true },
+          })
+        ).map((w) => w.formId)
+      : [],
+  );
   for (const f of forms) {
     if (!can(viewer, "read", { kind: "form", departmentId: f.departmentId, ownerId: f.ownerId })) {
       continue;
     }
+    if (competitionForms.has(f.id) && !canCompetition(viewer, "view")) continue;
     hits.push({
       kind: "form",
       id: f.id,

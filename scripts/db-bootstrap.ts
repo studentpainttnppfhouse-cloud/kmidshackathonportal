@@ -34,6 +34,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { resolveDatabaseUrl } from "../src/lib/database-url";
+import { installCompetitionTemplates } from "../src/lib/competition/install";
 
 const STRICT = process.argv.includes("--strict");
 const databaseUrl = resolveDatabaseUrl();
@@ -324,6 +325,17 @@ async function main(): Promise<boolean> {
             `${BANNER}\n`,
         );
       }
+    }
+
+    // The 2027 competition forms, as private drafts. Idempotent: an existing
+    // copy (edited or not) is left exactly as it is.
+    try {
+      const installed = await installCompetitionTemplates(db);
+      if (installed.created.length > 0) {
+        say(`installed competition form drafts: ${installed.created.join(", ")}.`);
+      }
+    } catch (error) {
+      complain(`could not install the competition form drafts: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     const [finalDepartments, finalUsers] = await Promise.all([

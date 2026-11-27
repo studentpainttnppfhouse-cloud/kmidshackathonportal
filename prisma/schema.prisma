@@ -1132,3 +1132,124 @@ model DriveVisit {
   @@index([userId, openedAt])
   @@map("drive_visits")
 }
+
+// ---------------------------------------------------------------------------
+// Competition forms — the 2027 Round 1 registration workflows
+// ---------------------------------------------------------------------------
+//
+// A competition workflow hangs off an ordinary `Form` row (type "internal",
+// meaning built in the portal) so it is listed on the Forms page. The track
+// below is the *student* track, "internal" (KMIDS-only) or "external", and is
+// deliberately a separate column: `Form.type` and `schema.access` mean other
+// things and must never be read as eligibility.
+
+model CompetitionWorkflow {
+  id           String    @id @default(cuid())
+  formId       String    @unique
+  year         Int
+  /// "internal" (KMIDS students only) or "external".
+  track        String    @db.VarChar(16)
+  /// Which template this was made from, e.g. "round1-2027".
+  templateKey  String    @db.VarChar(64)
+  /// Set only on the copy the installer created, so re-running it is a no-op.
+  installKey   String?   @unique @db.VarChar(96)
+  /// "draft" or "published". Drafts have no working public link.
+  status       String    @default("draft") @db.VarChar(16)
+  opensAt      DateTime?
+  closesAt     DateTime?
+  /// Finalist confirmation (stage H). Off until the owner turns it on.
+  stageHActive Boolean   @default(false)
+  /// Organizer settings: payee, refund policy, links, reviewer access…
+  settings     Json
+  /// The editable copy: sections, questions, stage F and draft stage H.
+  definition   Json
+  /// Bumped on every definition save; stored on each answer.
+  version      Int       @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams CompetitionTeam[]
+
+  @@index([year, track])
+  @@map("competition_workflows")
+}
+
+/// Allocates team numbers. One row per year and track, incremented atomically.
+model CompetitionCounter {
+  year  Int
+  track String @db.VarChar(16)
+  next  Int    @default(0)
+
+  @@id([year, track])
+  @@map("competition_counters")
+}
+
+model CompetitionTeam {
+  id                   String   @id @default(cuid())
+  workflowId           String
+  year                 Int
+  track                String   @db.VarChar(16)
+  seq                  Int
+  /// "internal01", "external12". Text, never a number.
+  teamCode             String   @db.VarChar(32)
+  teamName             String   @db.VarChar(200)
+  memberCount          Int
+  representativeEmail  String   @db.VarChar(254)
+  /// Validated registration answers (parts A to E), keyed by stable question id.
+  registration         Json
+  schemaVersion        Int
+  /// The browser's retry key: the same key always maps to the same team.
+  idempotencyKey       String   @unique @db.VarChar(64)
+  /// SHA-256 of the secret continuation link. The link itself is never stored.
+  continuationHash     String   @unique @db.VarChar(64)
+  continuationIssuedAt DateTime @default(now())
+
+  /// registered | accepted | rejected | withdrawn
+  registrationStatus String  @default("registered") @db.VarChar(16)
+  /// not_required (internal) | pending | verified | flagged
+  paymentStatus      String  @default("pending") @db.VarChar(16)
+  paymentFlag        String? @db.VarChar(300)
+  accessChecked      Boolean @default(false)
+  finalist           Boolean @default(false)
+  staffNotes         String? @db.Text
+
+  registeredAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workflow    CompetitionWorkflow     @relation(fields: [workflowId], references: [id])
+  submissions CompetitionSubmission[]
+
+  @@unique([year, track, seq])
+  @@unique([year, track, teamCode])
+  @@index([workflowId])
+  @@map("competition_teams")
+}
+
+/// Stage F (Round 1 work) and, later, stage H (finalist confirmation).
+model CompetitionSubmission {
+  id            String    @id @default(cuid())
+  teamId        String
+  /// "F" or "H"
+  stage         String    @db.VarChar(4)
+  /// "final" once submitted. Final rows are never overwritten.
+  status        String    @default("final") @db.VarChar(16)
+  payload       Json
+  schemaVersion Int
+  reference     String?   @unique @db.VarChar(40)
+  finalizedAt   DateTime?
+
+  /// The organizer's copy of the submitted folder, recorded by staff.
+  archiveStatus String    @default("not_archived") @db.VarChar(16)
+  archivedAt    DateTime?
+  archivedById  String?
+  archiveNote   String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team CompetitionTeam @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, stage])
+  @@map("competition_submissions")
+}

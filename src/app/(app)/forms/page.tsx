@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { requireViewer, can } from "@/lib/authorize";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatDateLong } from "@/lib/dates";
+import { canCompetition } from "@/lib/policy";
+import { installCompetitionDrafts } from "@/lib/actions/competition-admin";
 
 export const metadata: Metadata = { title: "Forms" };
 export const dynamic = "force-dynamic";
@@ -11,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function FormsPage() {
   const viewer = await requireViewer();
 
-  const [forms, departments] = await Promise.all([
+  const [forms, departments, workflows] = await Promise.all([
     db.form.findMany({
       where: { deletedAt: null },
       include: {
@@ -22,10 +24,21 @@ export default async function FormsPage() {
       orderBy: [{ isOpen: "desc" }, { deadline: "asc" }],
     }),
     db.department.findMany({ orderBy: { sortOrder: "asc" } }),
+    db.competitionWorkflow.findMany({
+      select: { formId: true, track: true, status: true, installKey: true, _count: { select: { teams: true } } },
+    }),
   ]);
+  const competitionByForm = new Map(workflows.map((w) => [w.formId, w]));
+  const seesCompetition = canCompetition(viewer, "view");
+  const mayInstall = canCompetition(viewer, "edit");
+  const installed = workflows.filter((w) => w.installKey).length;
 
+  // Competition forms hold participants' personal data, so they are listed
+  // only to the people who run them (T2 Head and above).
   const visible = forms.filter((f) =>
-    can(viewer, "read", { kind: "form", departmentId: f.departmentId, ownerId: f.ownerId }),
+    competitionByForm.has(f.id)
+      ? seesCompetition
+      : can(viewer, "read", { kind: "form", departmentId: f.departmentId, ownerId: f.ownerId }),
   );
 
   // Google Form links are no longer supported; old rows stay in the database
@@ -81,13 +94,22 @@ export default async function FormsPage() {
                         · closes {formatDateLong(form.deadline)}
                       </span>
                     ) : null}
-                    {!form.isOpen ? <span>· closed</span> : null}
+                    {competitionByForm.has(form.id) ? (
+                      <span className="font-semibold text-brand-deep">
+                        · Competition, {competitionByForm.get(form.id)!.track} track ·{" "}
+                        {competitionByForm.get(form.id)!.status === "published" ? "published" : "private draft"}
+                      </span>
+                    ) : !form.isOpen ? (
+                      <span>· closed</span>
+                    ) : null}
                   </p>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="hs-pill bg-tint text-brand-deep">
-                    {form._count.responses} responses
+                    {competitionByForm.has(form.id)
+                      ? `${competitionByForm.get(form.id)!._count.teams} teams`
+                      : `${form._count.responses} responses`}
                   </span>
                   <Link href={`/forms/${form.id}`} className="hs-btn hs-btn-secondary px-3 py-1.5 text-xs">
                     Open
@@ -114,6 +136,21 @@ export default async function FormsPage() {
           ) : null
         }
       />
+
+      {mayInstall && installed < 2 ? (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              The 2027 internal and external Round 1 forms are not installed yet. They arrive as private drafts.
+            </p>
+            <form action={installCompetitionDrafts}>
+              <button type="submit" className="hs-btn hs-btn-primary">
+                Install 2027 competition drafts
+              </button>
+            </form>
+          </div>
+        </Card>
+      ) : null}
 
       {section(internal)}
     </div>

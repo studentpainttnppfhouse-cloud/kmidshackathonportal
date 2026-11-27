@@ -81,6 +81,10 @@ export const PARENT_TYPES = [
   "user",
   "brand_font",
   "brand_logo",
+  // Competition registrations: payment slips, and identity / school documents
+  // (national ID, ปพ.7). Split so identity files can be held to a higher bar.
+  "competition_team",
+  "competition_identity",
 ] as const;
 
 export type ParentType = (typeof PARENT_TYPES)[number];

@@ -6,6 +6,9 @@ import { requirePageAccess, can } from "@/lib/authorize";
 import { FormBuilder } from "@/components/form-builder";
 import { PageHeader } from "@/components/ui";
 import { parseDefinition } from "@/lib/forms-schema";
+import { loadWorkflow } from "@/lib/competition/server";
+import { canCompetition } from "@/lib/policy";
+import { DefinitionEditor } from "@/components/competition-admin-forms";
 
 export const metadata: Metadata = { title: "Edit form" };
 export const dynamic = "force-dynamic";
@@ -14,6 +17,29 @@ export default async function EditFormPage({ params }: { params: Promise<{ id: s
   // A composer, not a page: a tier held at Read on forms never reaches it.
   const viewer = await requirePageAccess("forms", "edit");
   const { id } = await params;
+
+  const competition = await loadWorkflow(id);
+  if (competition) {
+    if (!canCompetition(viewer, "edit")) notFound();
+    return (
+      <div className="hs-enter space-y-5">
+        <PageHeader
+          eyebrow="Competition form"
+          title="Edit wording"
+          action={
+            <Link href={`/forms/${id}`} className="hs-btn hs-btn-ghost">
+              Back
+            </Link>
+          }
+        />
+        <p className="text-sm text-muted">
+          Change any question text, help line, intro or receipt. Question IDs, answer options, the member repeat and
+          the eligibility stops are fixed, so answers stay comparable across versions.
+        </p>
+        <DefinitionEditor formId={competition.form.id} definition={competition.definition} />
+      </div>
+    );
+  }
 
   const form = await db.form.findUnique({ where: { id } });
   if (!form || form.deletedAt || form.type !== "internal") notFound();

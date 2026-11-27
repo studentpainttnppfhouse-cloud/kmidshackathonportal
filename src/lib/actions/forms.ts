@@ -23,6 +23,7 @@ import {
 } from "@/lib/forms-schema";
 import { CHUNK_BYTES, MAX_UPLOAD_BYTES, formatBytes, safeFileName, safeMimeType } from "@/lib/attachments";
 import type { FormState } from "@/lib/actions/auth";
+import { isCompetitionForm } from "@/lib/competition/server";
 
 /**
  * Forms built and answered inside the portal.
@@ -133,6 +134,9 @@ export async function saveInternalForm(_prev: FormState, formData: FormData): Pr
     if (!department) return { error: "That department no longer exists." };
   }
 
+  // Competition forms have their own editor; this one would flatten them.
+  if (id && (await isCompetitionForm(id))) return { error: "Edit this form from its competition page." };
+
   if (id) {
     const existing = await db.form.findUnique({
       where: { id },
@@ -200,6 +204,8 @@ export async function saveInternalForm(_prev: FormState, formData: FormData): Pr
 export async function setFormOpen(id: string, open: boolean): Promise<void> {
   const viewer = await requireViewer();
   if (typeof open !== "boolean") return;
+  // Competition forms open and close through publishing, owner only.
+  if (await isCompetitionForm(id)) return;
 
   const form = await db.form.findUnique({
     where: { id },
@@ -277,6 +283,9 @@ export async function submitFormResponse(_prev: FormState, formData: FormData): 
 
   if (!form || form.deletedAt || form.type !== "internal") {
     return refuse("That form is not available.", "form missing or not a portal form");
+  }
+  if (await isCompetitionForm(form.id)) {
+    return refuse("That form is not available.", "competition forms take registrations through their own page");
   }
 
   const definition = parseDefinition(form.schema);

@@ -5,16 +5,23 @@ import { can } from "@/lib/authorize";
 import { audit } from "@/lib/audit";
 import { answerText, csvCell, isUpload, parseDefinition, type ResponsePayload } from "@/lib/forms-schema";
 import { appOrigin } from "@/lib/request";
+import { canCompetition } from "@/lib/policy";
+import { loadWorkflow } from "@/lib/competition/server";
+import { buildCompetitionCsv, type ExportStage, type ExportTeam } from "@/lib/competition/export";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /** The responses table as a CSV, for whoever runs the form. */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
   if (!viewer) return new NextResponse("Not found", { status: 404 });
 
   const { id } = await params;
+
+  const competition = await loadWorkflow(id);
+  if (competition) return exportCompetition(request, competition, viewer);
+
   const form = await db.form.findUnique({
     where: { id },
     select: { id: true, title: true, type: true, schema: true, deletedAt: true, ownerId: true, departmentId: true },
@@ -78,6 +85,73 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     headers: {
       "content-type": "text/csv; charset=utf-8",
       "content-disposition": `attachment; filename="${filename}"`,
+      "cache-control": "private, no-store",
+    },
+  });
+}
+
+/**
+ * A competition form's teams as CSV, one stage at a time. Heads, admins and the
+ * owner may export registrations and Round 1; stage H (emergency contacts,
+ * dietary and access needs) is admins and the owner only. Identity documents
+ * are named but only linked for admins and the owner, and the link itself
+ * still goes through the attachment permission check. Continuation links are
+ * never exported: only their hashes are stored.
+ */
+async function exportCompetition(
+  request: Request,
+  loaded: NonNullable<Awaited<ReturnType<typeof loadWorkflow>>>,
+  viewer: NonNullable<Awaited<ReturnType<typeof getViewer>>>,
+) {
+  const raw = new URL(request.url).searchParams.get("stage") ?? "registration";
+  const stage: ExportStage = raw === "F" || raw === "H" ? raw : "registration";
+  const allowed = canCompetition(viewer, "export") && (stage !== "H" || canCompetition(viewer, "edit"));
+  if (!allowed) {
+    await audit(viewer.id, "competition.export_denied", {
+      type: "form",
+      id: loaded.form.id,
+      detail: `Denied exporting stage ${stage} of "${loaded.form.title}"`,
+    });
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  const teams = await db.competitionTeam.findMany({
+    where: { workflowId: loaded.workflow.id },
+    include: { submissions: true },
+    orderBy: { seq: "asc" },
+  });
+  const files = await db.attachment.findMany({
+    where: {
+      parentId: { in: teams.map((t) => t.id) },
+      parentType: { in: ["competition_team", "competition_identity"] },
+      deletedAt: null,
+    },
+    select: { id: true, name: true, parentType: true },
+  });
+  const origin = await appOrigin();
+  const seeIdentity = canCompetition(viewer, "view_identity");
+  const byId = new Map(files.map((f) => [f.id, f]));
+  const fileRef = (fileId: string) => {
+    const file = byId.get(fileId);
+    if (!file) return null;
+    const linked = file.parentType !== "competition_identity" || seeIdentity;
+    return { name: file.name, url: linked ? `${origin}/api/attachments/${file.id}` : null };
+  };
+
+  const csv = buildCompetitionCsv(loaded.definition, stage, teams as unknown as ExportTeam[], fileRef);
+
+  await audit(viewer.id, "competition.exported", {
+    type: "form",
+    id: loaded.form.id,
+    detail: `Exported ${teams.length} teams, stage ${stage}, from "${loaded.form.title}"`,
+  });
+
+  const name = `hackathon-${loaded.workflow.year}-${loaded.workflow.track}-${stage === "registration" ? "registrations" : `stage-${stage}`}.csv`;
+  return new NextResponse(csv, {
+    status: 200,
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="${name}"`,
       "cache-control": "private, no-store",
     },
   });

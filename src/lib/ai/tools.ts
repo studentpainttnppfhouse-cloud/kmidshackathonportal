@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { can, isAdmin, type Viewer } from "@/lib/authorize";
+import { canCompetition } from "@/lib/policy";
 import { searchPortal } from "@/lib/search";
 import type { FormState } from "@/lib/actions/auth";
 import { createAssignment, updateAssignment } from "@/lib/actions/assignments";
@@ -322,8 +323,12 @@ async function execute(viewer: Viewer, name: string, a: Args): Promise<unknown> 
         orderBy: { createdAt: "desc" },
         take: 50,
       });
+      const competition = new Set(
+        (await db.competitionWorkflow.findMany({ select: { formId: true } })).map((w) => w.formId),
+      );
       return rows
         .filter((f) => can(viewer, "read", { kind: "form", departmentId: f.departmentId, ownerId: f.ownerId }))
+        .filter((f) => !competition.has(f.id) || canCompetition(viewer, "view"))
         .map((f) => ({ id: f.id, title: f.title, type: f.type, isOpen: f.isOpen, deadline: f.deadline, responseCount: f.responseCount, href: `/forms/${f.id}` }));
     }
 

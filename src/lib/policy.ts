@@ -334,3 +334,70 @@ export function can(user: Viewer | null, action: Action, resource: Resource): bo
 function isApprovable(resource: Resource): boolean {
   return resource.kind === "document" || resource.kind === "assignment";
 }
+
+// ---------------------------------------------------------------------------
+// Competition forms (the 2027 Round 1 registration workflows)
+// ---------------------------------------------------------------------------
+
+/**
+ * What staff may do with the competition registration forms.
+ *
+ * Kept apart from `can()` on purpose. These forms hold minors' contact details,
+ * payment slips and identity documents, and the rules for them are their own:
+ *
+ *   view, export, review   T2 Head and above, every competition form. Heads
+ *                          help check registrations and payments, so they see
+ *                          all of them, not just their department's.
+ *   edit                   T3 Admin and above (the forms are portal-wide, so a
+ *                          head's own-department rule never reaches them).
+ *   view_identity          T3 Admin and above. National ID and ปพ.7 copies.
+ *   correct                T4 Owner. Reopening a locked final entry.
+ *   publish                T4 Owner, or an admin the owner has delegated to.
+ *
+ * Advisors, members, alumni, inactive accounts and anyone the page grid has
+ * kept off Forms get none of it. Participants never reach this function: they
+ * answer through the public link, which has its own checks.
+ */
+export type CompetitionOp =
+  | "view"
+  | "export"
+  | "review"
+  | "edit"
+  | "view_identity"
+  | "correct"
+  | "publish";
+
+const COMPETITION_WRITES: ReadonlySet<CompetitionOp> = new Set<CompetitionOp>([
+  "review",
+  "edit",
+  "correct",
+  "publish",
+]);
+
+export function canCompetition(
+  user: Viewer | null,
+  op: CompetitionOp,
+  options: { publishDelegatedToAdmins?: boolean } = {},
+): boolean {
+  if (!user) return false;
+  if (!user.isActive || user.deletedAt) return false;
+  if (user.isAlumni) return false;
+
+  const level = pageLevel(user, "forms");
+  if (level === "NONE") return false;
+  if (COMPETITION_WRITES.has(op) && level !== "EDIT") return false;
+
+  switch (op) {
+    case "view":
+    case "export":
+    case "review":
+      return atLeast(user, "T2_HEAD");
+    case "edit":
+    case "view_identity":
+      return isAdmin(user);
+    case "correct":
+      return isOwner(user);
+    case "publish":
+      return isOwner(user) || (Boolean(options.publishDelegatedToAdmins) && isAdmin(user));
+  }
+}

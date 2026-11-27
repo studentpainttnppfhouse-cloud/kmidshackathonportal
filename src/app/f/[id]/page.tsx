@@ -7,6 +7,10 @@ import { isPublicForm, parseDefinition } from "@/lib/forms-schema";
 import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
 import { FormFill } from "@/components/form-fill";
 import { formatDateLong } from "@/lib/dates";
+import { availability, bangkokTimestamp, loadWorkflow } from "@/lib/competition/server";
+import { registerCompetitionTeam } from "@/lib/actions/competition-public";
+import { CompetitionForm } from "@/components/competition-form";
+import { EventLinks, Markdown, PublicShell } from "@/components/competition-public";
 
 export const metadata: Metadata = { title: "Form · Hackathon Studio", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -18,6 +22,11 @@ export const dynamic = "force-dynamic";
  */
 export default async function PublicFormPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // Competition registration forms have their own page and their own rules.
+  const competition = await loadWorkflow(id);
+  if (competition) return <CompetitionRegistrationPage loaded={competition} />;
+
   const viewer = await getViewer();
 
   const form = await db.form.findFirst({
@@ -71,5 +80,74 @@ export default async function PublicFormPage({ params }: { params: Promise<{ id:
         ) : null}
       </p>
     </main>
+  );
+}
+
+async function CompetitionRegistrationPage({
+  loaded,
+}: {
+  loaded: NonNullable<Awaited<ReturnType<typeof loadWorkflow>>>;
+}) {
+  const { form, workflow, definition, settings } = loaded;
+  const state = availability(workflow);
+  // A draft has no working public link, whoever is asking. Staff preview it
+  // from inside the portal.
+  if (state === "draft") notFound();
+
+  const payment =
+    workflow.track === "external"
+      ? {
+          payeeName: settings.payeeName,
+          bankName: settings.bankName,
+          accountNumber: settings.accountNumber,
+          promptPayId: settings.promptPayId,
+          paymentQr: settings.paymentQr,
+          expectedFee: settings.expectedFee,
+          refundPolicy: settings.refundPolicy,
+        }
+      : null;
+
+  return (
+    <PublicShell
+      footer={
+        <>
+          <Link href={`/f/${form.id}/recover`} className="text-brand-deep">
+            Already registered? Get your team link again
+          </Link>
+          {" · "}
+        </>
+      }
+    >
+      <h1 className="text-2xl font-bold text-ink">{definition.title}</h1>
+      {workflow.closesAt ? (
+        <p className="mt-2 rounded-xl bg-tint px-3 py-2 text-sm font-semibold text-brand-deep">
+          Registration and Round 1 submission close {bangkokTimestamp(workflow.closesAt)}
+        </p>
+      ) : null}
+      <Markdown source={definition.intro} className="mt-4" />
+      <div className="mt-4">
+        <EventLinks settings={settings} />
+      </div>
+
+      <div className="mt-8">
+        {state === "open" ? (
+          <CompetitionForm
+            mode="register"
+            formId={form.id}
+            sections={definition.sections}
+            maxBytes={MAX_UPLOAD_BYTES}
+            submitLabel={definition.registerLabel}
+            action={registerCompetitionTeam}
+            payment={payment}
+          />
+        ) : state === "not_yet_open" ? (
+          <p className="text-sm text-muted">
+            Registration opens {workflow.opensAt ? bangkokTimestamp(workflow.opensAt) : "soon"}.
+          </p>
+        ) : (
+          <p className="text-sm text-muted">Registration has closed.</p>
+        )}
+      </div>
+    </PublicShell>
   );
 }
