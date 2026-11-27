@@ -29,9 +29,12 @@ function confirm(id: string, label: string, confirmLabel = "I confirm"): CQuesti
 /**
  * Member documents, requested to match the information booklet: a national ID
  * card (or passport) and a ปพ.7 student status certificate for every member.
- * An author can switch either off per track without touching the code.
+ * External teams are asked for both. Internal (KMIDS) teams are not, so the
+ * internal copy starts with both switched off; an admin can switch either on
+ * from "Edit wording" without touching the code.
  */
 function memberDocuments(p: "I" | "E"): CQuestion[] {
+  const enabled = p === "E";
   return [
     {
       id: `${p}-C{n}-06`,
@@ -39,7 +42,7 @@ function memberDocuments(p: "I" | "E"): CQuestion[] {
       label: "Upload a copy of Member {n}'s national ID card, or passport if they do not hold a Thai ID card.",
       help: "A clear photo or PDF. Only the organizing admins can open it, and it is used to check eligibility.",
       required: true,
-      enabled: true,
+      enabled,
     },
     {
       id: `${p}-C{n}-07`,
@@ -47,7 +50,7 @@ function memberDocuments(p: "I" | "E"): CQuestion[] {
       label: "Upload Member {n}'s ปพ.7 (student status certificate) issued by their school.",
       help: "A clear photo or PDF of the school-issued certificate. Only the organizing admins can open it.",
       required: true,
-      enabled: true,
+      enabled,
     },
   ];
 }

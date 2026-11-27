@@ -44,8 +44,6 @@ function internalForm(members: number, extra: (fd: FormData) => void = () => {})
     fd.set(`c_I-C${n}-03`, "11");
     fd.set(`c_I-C${n}-04`, "11/2");
     fd.set(`c_I-C${n}-05`, `s${n}@kmids.ac.th`);
-    fd.set(`c_I-C${n}-06`, pdf(`id${n}.pdf`));
-    fd.set(`c_I-C${n}-07`, pdf(`pp7-${n}.pdf`));
   }
   for (let i = 1; i <= 9; i += 1) fd.set(`c_I-D0${i}`, "yes");
   extra(fd);
@@ -117,29 +115,26 @@ test("a solo team registers, and lowering 4 to 1 drops members 2 to 4 entirely",
   assert.equal(result.memberCount, 1);
   assert.ok(result.answers["I-C1-01"]);
   assert.equal(result.answers["I-C2-01"], undefined);
-  assert.equal(result.files["I-C2-06"], undefined);
-  assert.ok(result.files["I-C1-06"] && result.files["I-C1-07"]);
+  assert.deepEqual(result.files, {});
 });
 
-test("a missing member is refused, and so is a missing ID or ปพ.7", () => {
+test("a missing member is refused; external teams must send an ID and a ปพ.7", () => {
   const two = internalForm(2, (fd) => fd.delete("c_I-C2-01"));
   assert.equal(register(internal.sections, two).ok, false);
-  const noId = internalForm(1, (fd) => fd.delete("c_I-C1-06"));
-  assert.equal(register(internal.sections, noId).ok, false);
-  const noPp7 = internalForm(1, (fd) => fd.delete("c_I-C1-07"));
-  assert.equal(register(internal.sections, noPp7).ok, false);
+  const noId = externalForm((fd) => fd.delete("c_E-C1-06"));
+  assert.equal(register(external.sections, noId).ok, false);
+  const noPp7 = externalForm((fd) => fd.delete("c_E-C2-07"));
+  assert.equal(register(external.sections, noPp7).ok, false);
 });
 
-test("member documents can be switched off by the author", () => {
+test("internal teams are not asked for documents, but an admin can switch them on", () => {
+  const c = internal.sections.find((s) => s.key === "C")!;
+  assert.equal(expandSection(c, 4).some((q) => q.type === "document"), false);
   const edited = structuredClone(internal);
   for (const q of edited.sections.find((s) => s.key === "C")!.memberQuestions!) {
-    if (q.type === "document") q.enabled = false;
+    if (q.type === "document") q.enabled = true;
   }
-  const fd = internalForm(1, (f) => {
-    f.delete("c_I-C1-06");
-    f.delete("c_I-C1-07");
-  });
-  assert.equal(register(edited.sections, fd).ok, true);
+  assert.equal(register(edited.sections, internalForm(1)).ok, false);
 });
 
 test("eligibility answers stop the form", () => {
@@ -191,8 +186,8 @@ test("payment proof: one of upload or link, and an unexpected amount is flagged"
 
 test("an executable is not a document", () => {
   const exe = register(
-    internal.sections,
-    internalForm(1, (fd) => fd.set("c_I-C1-06", new File([new Uint8Array([1])], "id.exe"))),
+    external.sections,
+    externalForm((fd) => fd.set("c_E-C1-06", new File([new Uint8Array([1])], "id.exe"))),
   );
   assert.equal(exe.ok, false);
 });

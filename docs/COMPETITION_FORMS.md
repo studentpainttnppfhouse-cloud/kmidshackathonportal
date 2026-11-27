@@ -1,6 +1,6 @@
 # Competition forms (2027 Round 1)
 
-The internal and external Round 1 registration forms are built into the portal's Forms module. They follow `KMIDS_2027_Website_Forms_Plan_and_AI_Instructions.md` (27 November 2026). Per Paint's later request, they also ask every member for a national ID card (or passport) and a ปพ.7.
+The internal and external Round 1 registration forms are built into the portal's Forms module. They follow `KMIDS_2027_Website_Forms_Plan_and_AI_Instructions.md` (27 November 2026). Per Paint's later request, the external form also asks every member for a national ID card (or passport) and a ปพ.7. The internal form does not (both questions start switched off there; an admin can switch them on under Edit wording).
 
 ## Where things are
 
