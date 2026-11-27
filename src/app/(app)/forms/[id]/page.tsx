@@ -12,6 +12,8 @@ import { MAX_UPLOAD_BYTES } from "@/lib/attachments";
 import { FormFill, type StoredFile } from "@/components/form-fill";
 import { Banner, LastUpdated } from "@/components/ui";
 import { formatDateLong } from "@/lib/dates";
+import { loadWorkflow } from "@/lib/competition/server";
+import { CompetitionManage } from "@/components/competition-manage";
 
 export const metadata: Metadata = { title: "Form" };
 export const dynamic = "force-dynamic";
@@ -19,6 +21,9 @@ export const dynamic = "force-dynamic";
 export default async function FormPage({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await requireViewer();
   const { id } = await params;
+
+  const competition = await loadWorkflow(id);
+  if (competition) return <CompetitionManage loaded={competition} viewer={viewer} />;
 
   const form = await db.form.findUnique({
     where: { id },

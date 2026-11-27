@@ -10,6 +10,8 @@ import { canRenderInline } from "@/lib/attachments";
 import { ConfirmDelete } from "@/components/confirm-delete";
 import { Avatar, EmptyState, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/dates";
+import { redirect } from "next/navigation";
+import { isCompetitionForm } from "@/lib/competition/server";
 
 export const metadata: Metadata = { title: "Form responses" };
 export const dynamic = "force-dynamic";
@@ -18,6 +20,8 @@ export const dynamic = "force-dynamic";
 export default async function FormResponsesPage({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await requireViewer();
   const { id } = await params;
+  // Competition registrations are listed, with their statuses, on the form page.
+  if (await isCompetitionForm(id)) redirect(`/forms/${id}`);
 
   const form = await db.form.findUnique({
     where: { id },

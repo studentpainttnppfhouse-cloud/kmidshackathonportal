@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { requirePageAccess, can } from "@/lib/authorize";
 import { FormBuilder } from "@/components/form-builder";
 import { PageHeader } from "@/components/ui";
+import { canCompetition } from "@/lib/policy";
+import { TemplatePicker } from "@/components/competition-manage";
 
 export const metadata: Metadata = { title: "New form" };
 export const dynamic = "force-dynamic";
@@ -48,6 +50,7 @@ export default async function NewFormPage() {
           </Link>
         }
       />
+      {canCompetition(viewer, "edit") ? <TemplatePicker /> : null}
       <FormBuilder departments={creatable.map((d) => ({ id: d.id, name: d.name }))} />
     </div>
   );

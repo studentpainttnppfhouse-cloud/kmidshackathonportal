@@ -1,7 +1,7 @@
 import "server-only";
 import { readDrive, canEditDrive } from "./workspace-access";
 import { db } from "@/lib/db";
-import { can, canSeePage, type Viewer } from "@/lib/policy";
+import { can, canCompetition, canSeePage, type Viewer } from "@/lib/policy";
 import {
   canRenderInline,
   isParentType,
@@ -239,6 +239,29 @@ export async function resolveParent(
         canWrite: mine && row.form.isOpen,
         path: `/forms/${row.form.id}`,
         label: "this response",
+      };
+    }
+
+    case "competition_team":
+    case "competition_identity": {
+      // Files a participant sent with their registration. Participants have
+      // no account, so nobody reads these through the portal except staff who
+      // run the competition forms, and identity documents (national ID, ปพ.7)
+      // only admins and the owner. Nobody attaches here after the fact: the
+      // registration action stores them itself.
+      const team = await db.competitionTeam.findUnique({
+        where: { id: parentId },
+        select: { workflow: { select: { formId: true } } },
+      });
+      if (!team) return DENIED(parentType, parentId);
+      return {
+        parentType,
+        parentId,
+        departmentId: null,
+        canRead: canCompetition(viewer, parentType === "competition_identity" ? "view_identity" : "view"),
+        canWrite: false,
+        path: `/forms/${team.workflow.formId}/teams/${parentId}`,
+        label: "this registration",
       };
     }
 
