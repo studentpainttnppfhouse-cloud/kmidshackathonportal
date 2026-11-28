@@ -173,6 +173,38 @@ export const settingsSchema = z.object({
   aiRulesNote: z.string().trim().max(2000).default(""),
   /** The owner may let admins publish, open and close. */
   publishDelegatedToAdmins: z.boolean().default(false),
+
+  // --- Shown inside the site (pop-ups and their own pages) -----------------
+  /** Rules & Information, as Markdown, shown in a pop-up and on its own page. */
+  rulesContent: z.string().trim().max(30000).default(""),
+  /** The approved PDPA privacy notice, as Markdown. Never pre-filled. */
+  privacyContent: z.string().trim().max(30000).default(""),
+  /** External payment instructions, as Markdown, above Part E. */
+  paymentInstructions: z.string().trim().max(5000).default(""),
+  /** Up to four images shown with the payment instructions (small data URLs). */
+  paymentImages: z
+    .array(
+      z
+        .string()
+        .max(1_000_000)
+        .refine((v) => /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v), "Payment images must be images."),
+    )
+    .max(4)
+    .default([]),
+
+  // --- Consent forms (two parts) -------------------------------------------
+  /** Round 1 consent text (Markdown). Opens once staff accept the registration. */
+  consentRound1Text: z.string().trim().max(20000).default(""),
+  /** Round 2 (on-site final) consent text (Markdown). Opens for finalists. */
+  consentRound2Text: z.string().trim().max(20000).default(""),
+  /** An admin confirms the consent wording is approved before it opens. */
+  consentApproved: z.boolean().default(false),
+  /** Optional due dates shown to teams, YYYY-MM-DD (Bangkok). */
+  consentRound1Due: z.string().trim().max(10).default(""),
+  consentRound2Due: z.string().trim().max(10).default(""),
+
+  /** Set once the organizer's agreed defaults have been filled in. */
+  defaultsApplied: z.boolean().default(false),
 });
 export type CompetitionSettings = z.infer<typeof settingsSchema>;
 
